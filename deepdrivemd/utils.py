@@ -73,7 +73,7 @@ class SubprocessContext(BaseModel):
                 args=[
                     executable,
                     # Default to same executable we used to run `Thinker`, but can specify based on application
-                    *str(exec_path).split(),  # Script paths or modules, "-m voc.main"
+                    *str(exec_path).split(),  # Script paths or modules, "-m <module>"
                 ],
                 stdin=PIPE,  # PIPE lets me write to and read from the subprocess
                 stdout=PIPE,

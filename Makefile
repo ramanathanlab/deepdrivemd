@@ -36,7 +36,7 @@ coverage:
 
 .PHONY: pygount
 make pygount:
-	pygount --format=summary voc
+	pygount --format=summary deepdrivemd
 
 .PHONY: all
 all: format lint #mypy
