@@ -182,6 +182,13 @@ class Application(ABC):
         """Run method should also overide input and ouput type hints."""
         ...
 
+    @property
+    def persistent_dir(self) -> Path:
+        """A unique directory to save application output files to.
+        Same as workdir if node local storage is not used.
+        Otherwise, returns the output_dir / run-{uuid} path for the run."""
+        return self.config.output_dir / self.__workdir.name
+
     def get_workdir(self) -> Path:
         """Should only be called once per run() call."""
         workdir_parent = (
@@ -266,6 +273,4 @@ class Application(ABC):
             # Copy node local storage contents back to workdir after IPC
             # has finished to overlap I/O with workflow communication
             if self.config.node_local_path is not None:
-                shutil.move(
-                    self.__workdir, self.config.output_dir / self.__workdir.name
-                )
+                shutil.move(self.__workdir, self.persistent_dir)
