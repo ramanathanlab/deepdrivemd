@@ -220,6 +220,12 @@ def configure_simulation(
     return sim
 
 
+# TODO: A more efficient (but complex) implementation could background the
+# contact map and RMSD computation using openmm reporters using a process pool.
+# This would overlap the simulations and analysis so they finish at roughly
+# the same time.
+
+
 class MDSimulationApplication(Application):
     config: MDSimulationSettings
 
