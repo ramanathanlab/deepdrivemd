@@ -63,7 +63,9 @@ class CVAETrainApplication(Application):
         )
 
         if self.config.checkpoint_path is not None:
-            checkpoint = torch.load(self.config.checkpoint_path, map_location="cpu")
+            checkpoint = torch.load(
+                self.config.checkpoint_path, map_location=self.trainer.device
+            )
             self.trainer.model.load_state_dict(checkpoint["model_state_dict"])
 
     def run(self, input_data: CVAETrainInput) -> CVAETrainOutput:
