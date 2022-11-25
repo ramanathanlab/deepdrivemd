@@ -8,6 +8,12 @@ pylint = pylint $(package_name)/ $(extra_folders)
 pydocstyle = pydocstyle $(package_name)/
 run_mypy = mypy --config-file setup.cfg
 
+.PHONY: install
+install:
+	pip install -U pip setuptools wheel
+	pip install -r requirements/dev.txt
+	pip install -r requirements/requirements.txt
+	pip install -e .
 
 .PHONY: format
 format:
