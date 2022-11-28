@@ -233,6 +233,7 @@ class MDSimulationApplication(Application):
 
     def __init__(self, config: MDSimulationSettings) -> None:
         super().__init__(config)
+        self.__sim: "app.Simulation" = None
 
     @staticmethod
     def write_pdb_frame(
@@ -242,12 +243,35 @@ class MDSimulationApplication(Application):
         mda_u.trajectory[frame]
         mda_u.atoms.write(str(output_pdb_file))
 
-    def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
+    def initialize_sim_from_pdb(
+        self, pdb_file: Path, top_file: Optional[Path]
+    ) -> "app.Simulation":
+        """Initialize and cache a simulation object."""
+        if self.__sim is not None:
+            del self.__sim
+            self.__sim = configure_simulation(
+                pdb_file=pdb_file,
+                top_file=top_file,
+                solvent_type=self.config.solvent_type,
+                gpu_index=0,
+                dt_ps=self.config.dt_ps,
+                temperature_kelvin=self.config.temperature_kelvin,
+                heat_bath_friction_coef=self.config.heat_bath_friction_coef,
+            )
+        return self.__sim
 
+    def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
         if isinstance(input_data.simulation_start, SimulationFromPDB):
             pdb_file = input_data.simulation_start.pdb_file
             top_file = input_data.simulation_start.top_file
             pdb_file = Path(shutil.copy(pdb_file, self.workdir))
+            # If specified, copy the topology file to the workdir
+            top_file = Path(shutil.copy(top_file, self.workdir)) if top_file else None
+            if input_data.simulation_start.continue_sim:
+                sim = self.__sim  # Use cached simulation object
+                assert sim is not None
+            else:
+                sim = self.initialize_sim_from_pdb(pdb_file, top_file)
         else:
             assert isinstance(input_data.simulation_start, SimulationFromRestart)
             sim_dir = input_data.simulation_start.sim_dir
@@ -260,23 +284,13 @@ class MDSimulationApplication(Application):
             top_file = next(sim_dir.glob("*.top"), None)
             if top_file is None:
                 top_file = next(sim_dir.glob("*.prmtop"), None)
+            # If specified, copy the topology file to the workdir
+            top_file = Path(shutil.copy(top_file, self.workdir)) if top_file else None
 
             # New pdb file to write, example: run-<uuid>_frame000000.pdb
             pdb_file = self.workdir / f"{old_pdb_file.parent.name}_frame{frame:06}.pdb"
             self.write_pdb_frame(old_pdb_file, dcd_file, frame, pdb_file)
-
-        # If specified, copy the topology file to the workdir
-        top_file = Path(shutil.copy(top_file, self.workdir)) if top_file else None
-
-        sim = configure_simulation(
-            pdb_file=pdb_file,
-            top_file=top_file,
-            solvent_type=self.config.solvent_type,
-            gpu_index=0,
-            dt_ps=self.config.dt_ps,
-            temperature_kelvin=self.config.temperature_kelvin,
-            heat_bath_friction_coef=self.config.heat_bath_friction_coef,
-        )
+            sim = self.initialize_sim_from_pdb(pdb_file, top_file)
 
         # openmm typed variables
         dt_ps = self.config.dt_ps * u.picoseconds
@@ -289,6 +303,7 @@ class MDSimulationApplication(Application):
         nsteps = int(simulation_length_ns / dt_ps)
 
         traj_file = self.workdir / "sim.dcd"
+        sim.reporters = []
         sim.reporters.append(app.DCDReporter(traj_file, report_steps))
         sim.reporters.append(
             app.StateDataReporter(
