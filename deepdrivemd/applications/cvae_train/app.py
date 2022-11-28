@@ -48,7 +48,7 @@ class CVAETrainApplication(Application):
 
         # Train model
         self.trainer.fit(
-            X=contact_maps, scalars={"rmsd": rmsds}, output_path=self.workdir / "cvae"
+            X=contact_maps, scalars={"rmsd": rmsds}, output_path=self.workdir
         )
 
         # Log the loss
@@ -62,9 +62,10 @@ class CVAETrainApplication(Application):
         np.save(self.workdir / "z.npy", z)
 
         # Get the most recent model checkpoint
-        checkpoint_dir = self.persistent_dir / "cvae" / "checkpoints"
+        checkpoint_dir = self.workdir / "checkpoints"
         model_weight_path = natsorted(list(checkpoint_dir.glob("*.pt")))[-1]
-
+        # Adjust the path to the persistent path if using node local storage.
+        model_weight_path = self.persistent_dir / "checkpoints" / model_weight_path.name
         return CVAETrainOutput(model_weight_path=model_weight_path)
 
 

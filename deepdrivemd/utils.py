@@ -283,6 +283,13 @@ class Application(ABC):
             output_data.dump_yaml(output_path)
             print(output_path, flush=True)
 
+            # TODO: There is a very small chance of a race condition when
+            # downstream workflow components use output files which are
+            # written to node local storage and moved back to persistent
+            # storage (implemented below). This would happen if the file
+            # I/O takes longer than the workflow infrastructure overhead
+            # of starting the downstream task.
+
             # Copy node local storage contents back to workdir after IPC
             # has finished to overlap I/O with workflow communication
             if self.config.node_local_path is not None:
