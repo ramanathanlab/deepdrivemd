@@ -54,13 +54,6 @@ class CVAETrainApplication(Application):
         # Log the loss
         pd.DataFrame(self.trainer.loss_curve_).to_csv(self.workdir / "loss.csv")
 
-        # TODO: We don't use the result of the predict computation. It can be removed.
-        # Generate latent embeddings in inference mode
-        z, *_ = self.trainer.predict(
-            X=contact_maps, inference_batch_size=self.config.inference_batch_size
-        )
-        np.save(self.workdir / "z.npy", z)
-
         # Get the most recent model checkpoint
         checkpoint_dir = self.workdir / "checkpoints"
         model_weight_path = natsorted(list(checkpoint_dir.glob("*.pt")))[-1]

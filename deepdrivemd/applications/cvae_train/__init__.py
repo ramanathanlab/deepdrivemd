@@ -38,7 +38,6 @@ class CVAESettings(BaseSettings):
 
 
 class CVAETrainSettings(ApplicationSettings):
-    # Optionally begin training from a checkpoint file
     checkpoint_path: Optional[Path] = None
+    """Optionally begin training from a checkpoint file."""
     cvae_settings: CVAESettings = CVAESettings()
-    inference_batch_size: int = 128
