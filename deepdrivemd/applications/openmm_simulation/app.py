@@ -233,11 +233,10 @@ class MDSimulationApplication(Application):
         super().__init__(config)
 
     def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
-        workdir = self.get_workdir()
-        pdb_file = Path(shutil.copy(input_data.pdb_file, workdir))
+        pdb_file = Path(shutil.copy(input_data.pdb_file, self.workdir))
         top_file = None
         if input_data.top_file:
-            top_file = Path(shutil.copy(input_data.top_file, workdir))
+            top_file = Path(shutil.copy(input_data.top_file, self.workdir))
 
         sim = configure_simulation(
             pdb_file=pdb_file,
@@ -259,11 +258,11 @@ class MDSimulationApplication(Application):
         # Number of steps to run each simulation
         nsteps = int(simulation_length_ns / dt_ps)
 
-        traj_file = workdir / "sim.dcd"
+        traj_file = self.workdir / "sim.dcd"
         sim.reporters.append(app.DCDReporter(traj_file, report_steps))
         sim.reporters.append(
             app.StateDataReporter(
-                workdir / "sim.log",
+                self.workdir / "sim.log",
                 report_steps,
                 step=True,
                 time=True,
@@ -305,8 +304,8 @@ class MDSimulationApplication(Application):
 
         # Save simulation analysis results
         contact_maps = [np.concatenate(row_col) for row_col in zip(rows, cols)]
-        np.save(workdir / "contact_map.npy", contact_maps)
-        np.save(workdir / "rmsd.npy", rmsds)
+        np.save(self.workdir / "contact_map.npy", contact_maps)
+        np.save(self.workdir / "rmsd.npy", rmsds)
 
         return MDSimulationOutput(
             contact_map_path=self.persistent_dir / "contact_map.npy",
@@ -320,9 +319,8 @@ class MockMDSimulationApplication(Application):
         time.sleep(0.1)  # Emulate a large startup cost
 
     def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
-        workdir = self.get_workdir()
-        (workdir / "contact_map.npy").touch()
-        (workdir / "rmsd.npy").touch()
+        (self.workdir / "contact_map.npy").touch()
+        (self.workdir / "rmsd.npy").touch()
 
         return MDSimulationOutput(
             contact_map_path=self.persistent_dir / "contact_map.npy",

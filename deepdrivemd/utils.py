@@ -176,6 +176,7 @@ class Application(ABC):
 
     def __init__(self, config: ApplicationSettings) -> None:
         self.config = config
+        self.__workdir = None
 
     @abstractmethod
     def run(self, input_data: BaseSettings) -> BaseSettings:
@@ -187,9 +188,18 @@ class Application(ABC):
         """A unique directory to save application output files to.
         Same as workdir if node local storage is not used.
         Otherwise, returns the output_dir / run-{uuid} path for the run."""
-        return self.config.output_dir / self.__workdir.name
+        return self.config.output_dir / self.workdir.name
 
-    def get_workdir(self) -> Path:
+    @property
+    def workdir(self) -> Path:
+        """Returns a directory path to for application.run to write files to.
+        Will use a node local storage option if it is specified. At the end
+        of the application.run function, the workdir will be moved to the
+        persistent_dir location, if node local stoage is being used. If node
+        local storage is not being used, workdir and persistent_dir are the same."""
+        return self._create_workdir() if self.__workdir is None else self.__workdir
+
+    def _create_workdir(self) -> Path:
         """Should only be called once per run() call."""
         workdir_parent = (
             self.config.output_dir
@@ -262,6 +272,9 @@ class Application(ABC):
 
             input_data = self.input_type.from_yaml(inputs_path)
 
+            # Create a workdir for application.run to write output files to.
+            self._create_workdir()
+
             # Run the computation
             output_data = self.run(input_data)
 
@@ -273,4 +286,8 @@ class Application(ABC):
             # Copy node local storage contents back to workdir after IPC
             # has finished to overlap I/O with workflow communication
             if self.config.node_local_path is not None:
-                shutil.move(self.__workdir, self.persistent_dir)
+                # Check if there is at least one file before backing up the workdir.
+                # This avoids having an empty run directory for applications
+                # that don't make use of the file system for backing up data.
+                if next(self.workdir.iterdir(), None):
+                    shutil.move(self.workdir, self.persistent_dir)
