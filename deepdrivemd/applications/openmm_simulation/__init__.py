@@ -1,12 +1,27 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
+
+from pydantic import BaseModel
 
 from deepdrivemd.config import ApplicationSettings, BaseSettings, path_validator
 
 
-class MDSimulationInput(BaseSettings):
+class SimulationFromRestart(BaseModel):
+    """Initialize a simulation using a previous frame, selected by DeepDriveMD."""
+
+    sim_dir: Path
+    sim_frame: int
+
+
+class SimulationFromPDB(BaseModel):
+    """Initialize a simulation using an input file."""
+
     pdb_file: str
     top_file: Optional[str] = None
+
+
+class MDSimulationInput(BaseSettings):
+    simulation_start: Union[SimulationFromPDB, SimulationFromRestart]
 
 
 class MDSimulationOutput(BaseSettings):

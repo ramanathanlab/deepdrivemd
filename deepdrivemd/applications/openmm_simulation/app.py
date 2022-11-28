@@ -16,6 +16,8 @@ from deepdrivemd.applications.openmm_simulation import (
     MDSimulationInput,
     MDSimulationOutput,
     MDSimulationSettings,
+    SimulationFromPDB,
+    SimulationFromRestart,
 )
 from deepdrivemd.utils import Application, parse_application_args
 
@@ -232,11 +234,39 @@ class MDSimulationApplication(Application):
     def __init__(self, config: MDSimulationSettings) -> None:
         super().__init__(config)
 
+    @staticmethod
+    def write_pdb_frame(
+        pdb_file: Path, dcd_file: Path, frame: int, output_pdb_file: Path
+    ) -> None:
+        mda_u = MDAnalysis.Universe(str(pdb_file), str(dcd_file))
+        mda_u.trajectory[frame]
+        mda_u.atoms.write(str(output_pdb_file))
+
     def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
-        pdb_file = Path(shutil.copy(input_data.pdb_file, self.workdir))
-        top_file = None
-        if input_data.top_file:
-            top_file = Path(shutil.copy(input_data.top_file, self.workdir))
+
+        if isinstance(input_data.simulation_start, SimulationFromPDB):
+            pdb_file = input_data.simulation_start.pdb_file
+            top_file = input_data.simulation_start.top_file
+            pdb_file = Path(shutil.copy(pdb_file, self.workdir))
+        else:
+            assert isinstance(input_data.simulation_start, SimulationFromRestart)
+            sim_dir = input_data.simulation_start.sim_dir
+            frame = input_data.simulation_start.sim_frame
+
+            # Collect PDB and DCD files from previous simulation
+            old_pdb_file = next(sim_dir.glob("*.pdb"))
+            dcd_file = next(sim_dir.glob("*.dcd"))
+            # Check for optional topology files
+            top_file = next(sim_dir.glob("*.top"), None)
+            if top_file is None:
+                top_file = next(sim_dir.glob("*.prmtop"), None)
+
+            # New pdb file to write, example: run-<uuid>_frame000000.pdb
+            pdb_file = self.workdir / f"{old_pdb_file.parent.name}_frame{frame:06}.pdb"
+            self.write_pdb_frame(old_pdb_file, dcd_file, frame, pdb_file)
+
+        # If specified, copy the topology file to the workdir
+        top_file = Path(shutil.copy(top_file, self.workdir)) if top_file else None
 
         sim = configure_simulation(
             pdb_file=pdb_file,
