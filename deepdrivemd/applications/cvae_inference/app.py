@@ -9,6 +9,7 @@ import torch
 from mdlearn.nn.models.vae.symmetric_conv2d_vae import SymmetricConv2dVAETrainer
 from sklearn.neighbors import LocalOutlierFactor
 
+from deepdrivemd.applications.cvae_train import CVAESettings
 from deepdrivemd.applications.cvae_inference import (
     CVAEInferenceInput,
     CVAEInferenceOutput,
@@ -28,7 +29,8 @@ class CVAEInferenceApplication(Application):
         super().__init__(config)
 
         # Initialize the model
-        self.trainer = SymmetricConv2dVAETrainer(**self.config.cvae_settings.dict())
+        cvae_settings = CVAESettings.from_yaml(self.config.cvae_settings_yaml).dict()
+        self.trainer = SymmetricConv2dVAETrainer(**cvae_settings)
 
     def run(self, input_data: CVAEInferenceInput) -> CVAEInferenceOutput:
         # Log training data paths
@@ -43,7 +45,7 @@ class CVAEInferenceApplication(Application):
         lengths = [len(d) for d in _rmsds]  # Number of frames in each simulation
         sim_frames = np.concatenate([np.arange(i) for i in lengths])
         sim_dirs = np.concatenate(
-            [[str(Path(p).parent)] * l for p, l in zip(input_data.rmsd_paths, lengths)]
+            [[str(p.parent)] * l for p, l in zip(input_data.rmsd_paths, lengths)]
         )
         assert len(rmsds) == len(sim_frames) == len(sim_dirs)
 

@@ -5,8 +5,8 @@ from deepdrivemd.config import ApplicationSettings, BaseSettings
 
 
 class CVAETrainInput(BaseSettings):
-    contact_map_paths: List[str]
-    rmsd_paths: List[str]
+    contact_map_paths: List[Path]
+    rmsd_paths: List[Path]
 
 
 class CVAETrainOutput(BaseSettings):
@@ -40,4 +40,4 @@ class CVAESettings(BaseSettings):
 class CVAETrainSettings(ApplicationSettings):
     checkpoint_path: Optional[Path] = None
     """Optionally begin training from a checkpoint file."""
-    cvae_settings: CVAESettings = CVAESettings()
+    cvae_settings_yaml: Path

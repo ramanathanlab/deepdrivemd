@@ -12,6 +12,7 @@ from natsort import natsorted
 from deepdrivemd.applications.cvae_train import (
     CVAETrainInput,
     CVAETrainOutput,
+    CVAESettings,
     CVAETrainSettings,
 )
 from deepdrivemd.utils import Application, parse_application_args
@@ -28,7 +29,8 @@ class CVAETrainApplication(Application):
         super().__init__(config)
 
         # Initialize the model
-        self.trainer = SymmetricConv2dVAETrainer(**self.config.cvae_settings.dict())
+        cvae_settings = CVAESettings.from_yaml(self.config.cvae_settings_yaml).dict()
+        self.trainer = SymmetricConv2dVAETrainer(**cvae_settings)
 
         if self.config.checkpoint_path is not None:
             checkpoint = torch.load(

@@ -287,10 +287,16 @@ class MDSimulationApplication(Application):
             # If specified, copy the topology file to the workdir
             top_file = Path(shutil.copy(top_file, self.workdir)) if top_file else None
 
-            # New pdb file to write, example: run-<uuid>_frame000000.pdb
-            pdb_file = self.workdir / f"{old_pdb_file.parent.name}_frame{frame:06}.pdb"
-            self.write_pdb_frame(old_pdb_file, dcd_file, frame, pdb_file)
-            sim = self.initialize_sim_from_pdb(pdb_file, top_file)
+            if input_data.simulation_start.continue_sim:
+                pdb_file = Path(shutil.copy(old_pdb_file, self.workdir))
+                sim = self.__sim  # Use cached simulation object
+                assert sim is not None
+            else:
+                # New pdb file to write, example: run-<uuid>_frame000000.pdb
+                pdb_name = f"{old_pdb_file.parent.name}_frame{frame:06}.pdb"
+                pdb_file = self.workdir / pdb_name
+                self.write_pdb_frame(old_pdb_file, dcd_file, frame, pdb_file)
+                sim = self.initialize_sim_from_pdb(pdb_file, top_file)
 
         # openmm typed variables
         dt_ps = self.config.dt_ps * u.picoseconds
