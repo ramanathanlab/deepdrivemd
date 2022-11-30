@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from deepdrivemd.config import ApplicationSettings, BaseSettings
+from deepdrivemd.config import ApplicationSettings, BaseSettings, path_validator
 
 
 class CVAETrainInput(BaseSettings):
@@ -41,3 +41,7 @@ class CVAETrainSettings(ApplicationSettings):
     checkpoint_path: Optional[Path] = None
     """Optionally begin training from a checkpoint file."""
     cvae_settings_yaml: Path
+
+    # validators
+    _checkpoint_path = path_validator("checkpoint_path")
+    _cvae_settings_yaml = path_validator("cvae_settings_yaml")

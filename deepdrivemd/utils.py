@@ -256,7 +256,7 @@ class Application(ABC):
 
         if self.input_type is None or self.ouput_type is None:
             raise TypeError(
-                "Please overide of `run` method for application specific types"
+                "Please overide the `run` method with application specific type hints."
             )
 
         # Create a generator that produces

@@ -1,4 +1,5 @@
-"""Variant generation workflow."""
+"""DeepDriveMD using OpenMM for simulation and a convolutational
+variational autoencoder for adaptive control."""
 import logging
 import sys
 import itertools
@@ -121,13 +122,25 @@ class DeepDriveMDWorkflow(BaseThinker):
 
     @agent
     def simulate(self) -> None:
-        # Submit initial batch of queries to workers (Add a buffer to increase utilization)
+        # Collect initial PDB files, assumes they are in nested subdirectories,
+        # e.g., pdb_dir/system1/system1.pdb, pdb_dir/system2/system2.pdb.
+        # This allows us to put topology files in the same subdirectory as the
+        # PDB file, which is parsed below.
         initial_pdbs = itertools.cycle(self.input_pdb_dir.glob("**/*.pdb"))
+
+        # Submit initial batch of queries to workers (Add a buffer to increase utilization)
         for _ in range(self.simulation_workers + 5):
+            # We cycle around the input PDBs, for instance if there is only
+            # a single PDB file, we start all the tasks using it. If there
+            # are two input PDBs, we alternate them between task submissions.
             pdb_file = next(initial_pdbs)
+            # Scan directory for optional topology file (assumes topology
+            # file is in the same directory as the PDB file and that only
+            # one PDB/topology file exists in each directory.)
             top_file = next(pdb_file.parent.glob("*.top"), None)
             if top_file is None:
                 top_file = next(pdb_file.parent.glob("*.prmtop"), None)
+            # Submit simulation task
             self.submit_simulation(
                 SimulationFromPDB(pdb_file=pdb_file, top_file=top_file)
             )
@@ -154,7 +167,7 @@ class DeepDriveMDWorkflow(BaseThinker):
                 self.logger.warning("Bad simulation result")
                 continue
 
-            # Result should be used to update the surrogate
+            # Result should be used to update the model
             self.result_queue.put(result)
 
         self.logger.info("Exiting simulate")

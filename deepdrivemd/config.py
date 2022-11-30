@@ -13,7 +13,9 @@ _T = TypeVar("_T")
 PathLike = Union[str, Path]
 
 
-def _resolve_path_exists(value: Path) -> Path:
+def _resolve_path_exists(value: Optional[Path]) -> Optional[Path]:
+    if value is None:
+        return None
     p = value.resolve()
     if not p.exists():
         raise FileNotFoundError(p)

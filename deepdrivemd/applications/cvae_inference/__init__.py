@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import List, Optional
 
-from deepdrivemd.config import ApplicationSettings, BaseSettings
+from deepdrivemd.config import ApplicationSettings, BaseSettings, path_validator
 
 
 class CVAEInferenceInput(BaseSettings):
@@ -24,3 +24,7 @@ class CVAEInferenceSettings(ApplicationSettings):
     inference_batch_size: int = 128
     sklearn_num_jobs: int = 8
     num_outliers: int = 120
+
+    # validators
+    _checkpoint_path = path_validator("checkpoint_path")
+    _cvae_settings_yaml = path_validator("cvae_settings_yaml")
