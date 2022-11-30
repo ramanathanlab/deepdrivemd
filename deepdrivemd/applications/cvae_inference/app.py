@@ -9,12 +9,12 @@ import torch
 from mdlearn.nn.models.vae.symmetric_conv2d_vae import SymmetricConv2dVAETrainer
 from sklearn.neighbors import LocalOutlierFactor
 
-from deepdrivemd.applications.cvae_train import CVAESettings
 from deepdrivemd.applications.cvae_inference import (
     CVAEInferenceInput,
     CVAEInferenceOutput,
     CVAEInferenceSettings,
 )
+from deepdrivemd.applications.cvae_train import CVAESettings
 from deepdrivemd.utils import Application, parse_application_args
 
 logger = logging.getLogger(__name__)
@@ -33,9 +33,6 @@ class CVAEInferenceApplication(Application):
         self.trainer = SymmetricConv2dVAETrainer(**cvae_settings)
 
     def run(self, input_data: CVAEInferenceInput) -> CVAEInferenceOutput:
-        # Log training data paths
-        input_data.dump_yaml(self.workdir / "input_data.yaml")
-
         # Load data
         contact_maps = np.concatenate(
             [np.load(p) for p in input_data.contact_map_paths]

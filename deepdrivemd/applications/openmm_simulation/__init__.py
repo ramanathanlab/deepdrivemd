@@ -11,8 +11,6 @@ class SimulationFromPDB(BaseModel):
 
     pdb_file: Path
     top_file: Optional[Path] = None
-    continue_sim: bool = False
-    """If True, continue simulation from previous run."""
 
 
 class SimulationFromRestart(BaseModel):
@@ -20,12 +18,19 @@ class SimulationFromRestart(BaseModel):
 
     sim_dir: Path
     sim_frame: int
-    continue_sim: bool = False
-    """If True, continue simulation from previous run."""
+
+
+class ContinueSimulation(BaseModel):
+    """Continue simulation from previous run."""
+
+
+SimulationStartType = Union[
+    SimulationFromPDB, SimulationFromRestart, ContinueSimulation
+]
 
 
 class MDSimulationInput(BaseSettings):
-    simulation_start: Union[SimulationFromPDB, SimulationFromRestart]
+    simulation_start: SimulationStartType
 
 
 class MDSimulationOutput(BaseSettings):

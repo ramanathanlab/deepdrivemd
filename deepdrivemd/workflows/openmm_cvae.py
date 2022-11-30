@@ -1,14 +1,14 @@
 """DeepDriveMD using OpenMM for simulation and a convolutational
 variational autoencoder for adaptive control."""
+import itertools
 import logging
 import sys
-import itertools
 from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Semaphore
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 import proxystore as ps
 from colmena.models import Result
@@ -16,28 +16,31 @@ from colmena.redis.queue import ClientQueues, make_queue_pairs
 from colmena.task_server import ParslTaskServer
 from colmena.thinker import BaseThinker, agent, result_processor
 from pydantic import root_validator
-from deepdrivemd.applications.openmm_simulation import (
-    SimulationFromPDB,
-    SimulationFromRestart,
-    MDSimulationInput,
-    MDSimulationOutput,
-    MDSimulationSettings,
+from voc.parsl import (
+    create_local_configuration,
+    create_polaris_singlesite_reward_generation_v2_configuration,
+)
+
+from deepdrivemd.applications.cvae_inference import (
+    CVAEInferenceInput,
+    CVAEInferenceOutput,
+    CVAEInferenceSettings,
 )
 from deepdrivemd.applications.cvae_train import (
     CVAETrainInput,
     CVAETrainOutput,
     CVAETrainSettings,
 )
-from deepdrivemd.applications.cvae_inference import (
-    CVAEInferenceInput,
-    CVAEInferenceOutput,
-    CVAEInferenceSettings,
+from deepdrivemd.applications.openmm_simulation import (
+    ContinueSimulation,
+    MDSimulationInput,
+    MDSimulationOutput,
+    MDSimulationSettings,
+    SimulationFromPDB,
+    SimulationFromRestart,
+    SimulationStartType,
 )
 from deepdrivemd.config import BaseSettings, PolarisUserOptions
-from voc.parsl import (
-    create_local_configuration,
-    create_polaris_singlesite_reward_generation_v2_configuration,
-)
 from deepdrivemd.utils import application, register_application
 
 # TODO: Pass a yaml file containing CVAE params, read into memory
@@ -101,8 +104,8 @@ class DeepDriveMDWorkflow(BaseThinker):
         self.simulations_per_train = simulations_per_train
 
         self.governor = Semaphore()
-        self.result_queue: Queue[Result] = Queue()
-        self.restart_queue: Queue[SimulationFromRestart] = Queue()
+        self.simulation_output_queue: Queue[Result] = Queue()
+        self.inference_output_queue: Queue[SimulationFromRestart] = Queue()
         self.latest_cvae_weights: Optional[Path] = None
 
     def log_result(self, result: Result, topic: str) -> None:
@@ -110,9 +113,7 @@ class DeepDriveMDWorkflow(BaseThinker):
         with open(self.result_dir / f"{topic}.json", "a") as f:
             print(result.json(exclude={"inputs", "value"}), file=f)
 
-    def submit_simulation(
-        self, simulation_start: Union[SimulationFromPDB, SimulationFromRestart]
-    ) -> None:
+    def submit_simulation(self, simulation_start: SimulationStartType) -> None:
         self.queues.send_inputs(
             MDSimulationInput(simulation_start=simulation_start),
             method="run_simulation",
@@ -153,22 +154,22 @@ class DeepDriveMDWorkflow(BaseThinker):
 
             # Submit another simulation as soon as the previous one finishes
             # to keep utilization high
-            if not self.restart_queue.empty():
-                simulation_start = self.restart_queue.get()
+            if not self.inference_output_queue.empty():
+                # If the AI inference has selected restart points, use those
+                simulation_start = self.inference_output_queue.get()
                 self.submit_simulation(simulation_start)
             else:
-                simulation_start = result["inputs"][0][0]["simulation_start"].copy()
-                simulation_start.continue_sim = True
-                self.submit_simulation(simulation_start)
+                # Otherwise, continue an existing simulation
+                self.submit_simulation(ContinueSimulation())
 
-            # On simulation completion, push new task to queue
+            # Log simulation job results
             self.log_result(result, "simulation")
             if not result.success:
                 self.logger.warning("Bad simulation result")
                 continue
 
             # Result should be used to update the model
-            self.result_queue.put(result)
+            self.simulation_output_queue.put(result)
 
         self.logger.info("Exiting simulate")
         self.done.set()
@@ -178,15 +179,13 @@ class DeepDriveMDWorkflow(BaseThinker):
         while True:  # TODO: Stop criterion?
             # Wait for a result to complete
             try:
-                result = self.result_queue.get(timeout=10)
+                result = self.simulation_output_queue.get(timeout=10)
             except Empty:
                 continue
 
-            # Parse inputs and output values
-            inputs: MDSimulationInput = result.inputs[0][0]
+            # Parse simulation output values
             output: MDSimulationOutput = result.value
-
-            assert isinstance(inputs, MDSimulationInput)
+            assert isinstance(output, MDSimulationOutput)
 
             # Collect simulation results
             self.cvae_input.contact_map_paths.append(output.contact_map_path)

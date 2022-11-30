@@ -176,7 +176,7 @@ class Application(ABC):
 
     def __init__(self, config: ApplicationSettings) -> None:
         self.config = config
-        self.__workdir = None
+        self.__workdir: Optional[Path] = None
 
     @abstractmethod
     def run(self, input_data: BaseSettings) -> BaseSettings:
@@ -210,6 +210,15 @@ class Application(ABC):
         workdir.mkdir(exist_ok=True, parents=True)
         self.__workdir = workdir
         return workdir
+
+    def copy_to_workdir(self, p: Optional[Path]) -> Optional[Path]:
+        """Copy a file or directory to the workdir. If p is None, do nothing."""
+        if p is None:
+            return None
+        elif p.is_file():
+            return Path(shutil.copy(p, self.workdir))
+        else:
+            return Path(shutil.copytree(p, self.workdir / p.name))
 
     @staticmethod
     def generate_input_paths(
@@ -275,8 +284,14 @@ class Application(ABC):
             # Create a workdir for application.run to write output files to.
             self._create_workdir()
 
+            # Log the input data
+            input_data.dump_yaml(self.workdir / "input.yaml")
+
             # Run the computation
             output_data = self.run(input_data)
+
+            # Log the output data
+            output_data.dump_yaml(self.workdir / "output.yaml")
 
             # Return the result via disk (write in same directory)
             output_path = inputs_path.parent / "output.yaml"

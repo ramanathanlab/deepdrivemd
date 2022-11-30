@@ -10,9 +10,9 @@ from mdlearn.nn.models.vae.symmetric_conv2d_vae import SymmetricConv2dVAETrainer
 from natsort import natsorted
 
 from deepdrivemd.applications.cvae_train import (
+    CVAESettings,
     CVAETrainInput,
     CVAETrainOutput,
-    CVAESettings,
     CVAETrainSettings,
 )
 from deepdrivemd.utils import Application, parse_application_args
@@ -39,9 +39,6 @@ class CVAETrainApplication(Application):
             self.trainer.model.load_state_dict(checkpoint["model_state_dict"])
 
     def run(self, input_data: CVAETrainInput) -> CVAETrainOutput:
-        # Log training data paths
-        input_data.dump_yaml(self.workdir / "input_data.yaml")
-
         # Load data
         contact_maps = np.concatenate(
             [np.load(p) for p in input_data.contact_map_paths]
