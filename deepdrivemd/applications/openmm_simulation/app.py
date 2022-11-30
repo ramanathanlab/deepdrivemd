@@ -19,6 +19,7 @@ from deepdrivemd.applications.openmm_simulation import (
     MDSimulationSettings,
     SimulationFromPDB,
     SimulationFromRestart,
+    SimulationStartType,
 )
 from deepdrivemd.utils import Application, parse_application_args
 
@@ -298,15 +299,18 @@ class MDSimulationApplication(Application):
         self.write_pdb_frame(old_pdb_file, dcd_file, frame, self.pdb_file)
         self.init_simulation(self.pdb_file, self.top_file)
 
+    def initialize_run(self, simulation_start: SimulationStartType) -> None:
+        if isinstance(simulation_start, ContinueSimulation):
+            self.init_continue_simulation(simulation_start)
+        elif isinstance(simulation_start, SimulationFromPDB):
+            self.init_simulation_from_pdb(simulation_start)
+        else:
+            assert isinstance(simulation_start, SimulationFromRestart)
+            self.init_simulation_from_restart(simulation_start)
+
     def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
         # Initialize self.sim, self.pdb_file, and self.top_file given new inputs
-        if isinstance(input_data.simulation_start, ContinueSimulation):
-            self.init_continue_simulation(input_data.simulation_start)
-        elif isinstance(input_data.simulation_start, SimulationFromPDB):
-            self.init_simulation_from_pdb(input_data.simulation_start)
-        else:
-            assert isinstance(input_data.simulation_start, SimulationFromRestart)
-            self.init_simulation_from_restart(input_data.simulation_start)
+        self.initialize_run(input_data.simulation_start)
 
         # openmm typed variables
         dt_ps = self.config.dt_ps * u.picoseconds
