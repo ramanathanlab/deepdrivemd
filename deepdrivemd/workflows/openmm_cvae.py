@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from queue import Empty, Queue
 from threading import Semaphore
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import proxystore as ps
 from colmena.models import Result
@@ -17,10 +17,6 @@ from colmena.redis.queue import ClientQueues, make_queue_pairs
 from colmena.task_server import ParslTaskServer
 from colmena.thinker import BaseThinker, agent, result_processor
 from pydantic import root_validator
-from voc.parsl import (
-    create_local_configuration,
-    create_polaris_singlesite_reward_generation_v2_configuration,
-)
 
 from deepdrivemd.applications.cvae_inference import (
     CVAEInferenceInput,
@@ -41,7 +37,8 @@ from deepdrivemd.applications.openmm_simulation import (
     SimulationFromRestart,
     SimulationStartType,
 )
-from deepdrivemd.config import BaseSettings, PolarisUserOptions
+from deepdrivemd.config import BaseSettings
+from deepdrivemd.parsl import create_local_configuration
 from deepdrivemd.utils import application, register_application
 
 # TODO: Pass a yaml file containing CVAE params, read into memory
@@ -59,8 +56,6 @@ class ExperimentSettings(BaseSettings):
     """Address at which the redis server can be reached."""
     redisport: int = 6379
     """Port on which redis is available."""
-    polaris_config: Optional[PolarisUserOptions] = None
-    """If running on polaris, provide a configuration dictionary"""
     input_pdb_dir: Path
     """Nested PDB input directory, e.g. pdb_dir/system1/system1.pdb, pdb_dir/system2/system2.pdb."""
     simulation_workers: int
@@ -376,30 +371,15 @@ if __name__ == "__main__":
     )
 
     # Define the worker configuration
-    if cfg.polaris_config is not None:
-        parsl_config = create_polaris_singlesite_reward_generation_v2_configuration(
-            cfg.polaris_config, cfg.run_dir / "run-info"
-        )
-        default_executors = [cfg.polaris_config.executor_label]
-        doer = ParslTaskServer(
-            [
-                (run_transformer_generation, {"executors": ["single"]}),
-                (run_bayes_optimizer, {"executors": ["bayes-opt"]}),
-            ],
-            server_queues,
-            parsl_config,
-            # default_executors=default_executors,
-        )
-    else:
-        parsl_config = create_local_configuration(cfg.run_dir / "run-info")
-        default_executors = ["htex"]
+    parsl_config = create_local_configuration(cfg.run_dir / "run-info")
+    default_executors = ["htex"]
 
-        doer = ParslTaskServer(
-            [run_transformer_generation, run_bayes_optimizer],
-            server_queues,
-            parsl_config,
-            default_executors=default_executors,
-        )
+    doer = ParslTaskServer(
+        [run_simulation, run_inference, run_simulation],
+        server_queues,
+        parsl_config,
+        default_executors=default_executors,
+    )
 
     thinker = DeepDriveMDWorkflow(
         queue=client_queues,

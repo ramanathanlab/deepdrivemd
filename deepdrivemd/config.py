@@ -1,12 +1,10 @@
 import json
-from enum import Enum
 from pathlib import Path
 from typing import Optional, Type, TypeVar, Union
 
 import yaml
-from parsl.launchers import GnuParallelLauncher, MpiExecLauncher
 from pydantic import BaseSettings as _BaseSettings
-from pydantic import Field, validator
+from pydantic import validator
 
 _T = TypeVar("_T")
 
@@ -51,52 +49,3 @@ class ApplicationSettings(BaseSettings):
         v = v.resolve()
         v.mkdir(exist_ok=True, parents=True)
         return v
-
-
-class LauncherEnum(str, Enum):
-    GnuParallelLauncher = "GnuParallelLauncher"
-    MpiExecLauncher = "MpiExecLauncher"
-
-
-LauncherType = Union[MpiExecLauncher, GnuParallelLauncher]
-
-
-class PolarisUserOptions(BaseSettings):
-    executor_label: str = "single"
-    """Colmena label for this executor"""
-    num_nodes: int = 10
-    """Number of nodes to request"""
-    worker_init: str = Field(
-        ...,
-        help="How to start a worker. Should load any modules and activate the conda env.",
-    )
-    scheduler_options: str = ""
-    """PBS directives, pass -J for array jobs"""
-    account: str
-    """The account to charge comptue to."""
-    queue: str
-    """Which queue to submit jobs to, will usually be prod."""
-    walltime: str
-    """Maximum job time."""
-    cpus_per_node: int = 64
-    """Up to 64 with multithreading."""
-    strategy: str = "simple"
-
-
-class PerlmutterUserOptions(BaseSettings):
-
-    address: Optional[str]
-    """Optional: the network interface on the login node to which compute nodes can communicate."""
-    partition: str
-    """Queue to submit job to"""
-    nodes: int = 1
-    """Number of nodes for multi-node jobs."""
-    scheduler_options: str
-    """String to prepend to #SBATCH blocks in the submit."""
-    worker_init: str
-    """Command to be run before starting a worker."""
-    launcher_overides: str = ""
-    """Overides for the `Srun` launcher"""
-    walltime: str
-    """Maximum job time"""
-    strategy: str = "simple"
