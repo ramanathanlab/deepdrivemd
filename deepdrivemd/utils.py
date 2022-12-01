@@ -11,7 +11,16 @@ from pathlib import Path
 from selectors import EVENT_READ, DefaultSelector
 from subprocess import PIPE, Popen
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import Any, Callable, Iterator, Optional, Type, TypeVar, get_type_hints
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    Optional,
+    Type,
+    TypeVar,
+    get_type_hints,
+)
 
 from pydantic import BaseModel
 
@@ -118,7 +127,7 @@ class SubprocessContext(BaseModel):
             return output_data_type.from_yaml(output_path)
 
 
-CONTEXTS = defaultdict(SubprocessContext)
+CONTEXTS: Dict[str, SubprocessContext] = defaultdict(SubprocessContext)
 
 
 def application(
@@ -166,7 +175,7 @@ def register_application(
 ) -> Callable[..., Any]:
     out = functools.partial(func, **kwargs)
     functools.update_wrapper(out, func)
-    out.__name__ = name
+    out.__name__ = name  # type: ignore
     return out
 
 
