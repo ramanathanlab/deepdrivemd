@@ -15,7 +15,7 @@ import proxystore as ps
 from colmena.models import Result
 from colmena.redis.queue import ClientQueues, make_queue_pairs
 from colmena.task_server import ParslTaskServer
-from colmena.thinker import BaseThinker, agent, result_processor
+from colmena.thinker import BaseThinker, ResourceCounter, agent, result_processor
 from pydantic import root_validator
 
 from deepdrivemd.applications.cvae_inference import (
@@ -57,6 +57,10 @@ class ExperimentSettings(BaseSettings):
     """Nested PDB input directory, e.g. pdb_dir/system1/system1.pdb, pdb_dir/system2/system2.pdb."""
     simulation_workers: int
     """Number of simulation tasks to run in parallel."""
+    train_workers: int = 1
+    """Number of training tasks to run at a time."""
+    inference_workers: int = 1
+    """Number of inference tasks to run at a time."""
     simulations_per_train: int
     """Number of simulation results to use between model training tasks."""
     simulations_per_inference: int
@@ -70,10 +74,10 @@ class ExperimentSettings(BaseSettings):
     @root_validator(pre=True)
     def create_output_dirs(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         # Generate unique run path within run_dirs with a timestamp
-        run_dir = (
-            Path(values["runs_dir"])
-            / f"{values['experiment_name']}-{datetime.now().strftime('%d%m%y-%H%M%S')}"
-        ).resolve()
+        runs_dir = Path(values.get("runs_dir", "runs")).resolve()
+        experiment_name = values.get("experiment_name", "experiment")
+        timestamp = datetime.now().strftime("%d%m%y-%H%M%S")
+        run_dir = runs_dir / f"{experiment_name}-{timestamp}"
         run_dir.mkdir(exist_ok=False, parents=True)
         values["run_dir"] = run_dir
         # If not specified by user, specify path to the database within run_dir
@@ -83,18 +87,23 @@ class ExperimentSettings(BaseSettings):
 
         return values
 
+    @property
+    def total_workers(self) -> int:
+        return self.simulation_workers + self.train_workers + self.inference_workers
+
 
 class DeepDriveMDWorkflow(BaseThinker):
     def __init__(
         self,
         queue: ClientQueues,
+        resource_counter: ResourceCounter,
         result_dir: Path,
         input_pdb_dir: Path,
         simulation_workers: int,
         simulations_per_train: int,
         simulations_per_inference: int,
     ) -> None:
-        super().__init__(queue)
+        super().__init__(queue, resource_counter)
 
         result_dir.mkdir(exist_ok=True)
         self.result_dir = result_dir
@@ -378,8 +387,13 @@ if __name__ == "__main__":
         default_executors=default_executors,
     )
 
+    resource_counter = ResourceCounter(
+        total_slots=cfg.total_workers, task_types=["simulation", "train", "inference"]
+    )
+
     thinker = DeepDriveMDWorkflow(
         queue=client_queues,
+        resource_counter=resource_counter,
         result_dir=cfg.run_dir / "result",
         input_pdb_dir=cfg.input_pdb_dir,
         simulation_workers=cfg.simulation_workers,

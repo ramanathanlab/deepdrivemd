@@ -1,5 +1,3 @@
-experiment_name: test-experiment
-runs_dir: runs
 input_pdb_dir: data/1fme/system
 simulation_workers: 4
 simulations_per_train: 4
