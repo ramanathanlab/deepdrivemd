@@ -211,7 +211,7 @@ class DeepDriveMDWorkflow(BaseThinker):
             self.train_input.contact_map_paths.append(output.contact_map_path)
             self.train_input.rmsd_paths.append(output.rmsd_path)
 
-            # Train CVAE if enough data is available
+            # Train model if enough data is available
             if len(self.train_input.rmsd_paths) >= self.simulations_per_train:
                 self.train_governor.acquire()  # Make sure only one training task runs at a time
                 self.queues.send_inputs(
