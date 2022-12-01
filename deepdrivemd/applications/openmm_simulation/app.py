@@ -402,7 +402,7 @@ class MDSimulationApplication(Application):
 class MockMDSimulationApplication(Application):
     def __init__(self, config: MDSimulationSettings) -> None:
         super().__init__(config)
-        time.sleep(0.1)  # Emulate a large startup cost
+        time.sleep(5.0)  # Emulate a large startup cost
 
     def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
         (self.workdir / "contact_map.npy").touch()

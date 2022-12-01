@@ -2,6 +2,7 @@ input_pdb_dir: data/1fme/system
 simulation_workers: 4
 simulations_per_train: 4
 simulations_per_inference: 4
+num_total_simulations: 8
 
 simulation_settings:
   simulation_length_ns: 1
