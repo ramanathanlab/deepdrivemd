@@ -11,7 +11,7 @@ class CVAEInferenceInput(BaseSettings):
 
 
 class CVAEInferenceOutput(BaseSettings):
-    sim_dirs: List[str]
+    sim_dirs: List[Path]
     """Simulation directory containing the outlier."""
     sim_frames: List[int]
     """Frame of the simulation corresponding to the outlier."""

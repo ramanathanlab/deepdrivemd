@@ -82,7 +82,7 @@ class CVAEInferenceApplication(Application):
 
         # Map each of the selections back to the correct simulation file and frame
         return CVAEInferenceOutput(
-            sim_dirs=list(df.sim_dirs), sim_frames=list(df.sim_frames)
+            sim_dirs=list(map(Path, df.sim_dirs)), sim_frames=list(df.sim_frames)
         )
 
 
@@ -95,7 +95,7 @@ class MockCVAEInferenceApplication(Application):
 
     def run(self, input_data: CVAEInferenceInput) -> CVAEInferenceOutput:
         return CVAEInferenceOutput(
-            sim_dirs=["/path/to/sim_dir"] * self.config.num_outliers,
+            sim_dirs=[Path("/path/to/sim_dir")] * self.config.num_outliers,
             sim_frames=[0] * self.config.num_outliers,
         )
 
