@@ -41,9 +41,6 @@ from deepdrivemd.config import BaseSettings
 from deepdrivemd.parsl import create_local_configuration
 from deepdrivemd.utils import application, register_application
 
-# TODO: Pass a yaml file containing CVAE params, read into memory
-# and set the train/inference settings in the root_validator.
-
 
 class ExperimentSettings(BaseSettings):
     experiment_name: str = "experiment"
@@ -67,8 +64,8 @@ class ExperimentSettings(BaseSettings):
 
     # Application settings
     simulation_settings: MDSimulationSettings
-    cvae_train_settings: CVAETrainSettings
-    cvae_inference_settings: CVAEInferenceSettings
+    train_settings: CVAETrainSettings
+    inference_settings: CVAEInferenceSettings
 
     @root_validator(pre=True)
     def create_output_dirs(cls, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -81,7 +78,7 @@ class ExperimentSettings(BaseSettings):
         values["run_dir"] = run_dir
         # If not specified by user, specify path to the database within run_dir
         # Specify application output directories
-        for name in ["simulation", "cvae_train", "cvae_inference"]:
+        for name in ["simulation", "train", "inference"]:
             values[f"{name}_settings"]["output_dir"] = run_dir / name
 
         return values
@@ -356,7 +353,7 @@ if __name__ == "__main__":
     run_train = register_application(
         application,
         name="run_train",
-        config=cfg.cvae_train_settings,
+        config=cfg.train_settings,
         exec_path="-m deepdrivemd.applications.cvae_train.app" + testing,
         return_type=CVAETrainOutput,
         communication_path=cfg.run_dir / "comm",
@@ -364,7 +361,7 @@ if __name__ == "__main__":
     run_inference = register_application(
         application,
         name="run_inference",
-        config=cfg.cvae_inference_settings,
+        config=cfg.inference_settings,
         exec_path="-m deepdrivemd.applications.cvae_inference.app" + testing,
         return_type=CVAEInferenceOutput,
         communication_path=cfg.run_dir / "comm",
