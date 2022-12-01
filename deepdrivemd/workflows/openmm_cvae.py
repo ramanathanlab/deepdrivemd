@@ -372,7 +372,7 @@ if __name__ == "__main__":
     default_executors = ["htex"]
 
     doer = ParslTaskServer(
-        [run_simulation, run_inference, run_simulation],
+        [run_simulation, run_train, run_inference],
         server_queues,
         parsl_config,
         default_executors=default_executors,

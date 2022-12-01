@@ -7,9 +7,14 @@ from typing import Optional, Tuple, Union
 import MDAnalysis
 import numpy as np
 import numpy.typing as npt
-import openmm
-import openmm.app as app
-import openmm.unit as u
+
+try:
+    import openmm
+    import openmm.app as app
+    import openmm.unit as u
+except ImportError:
+    pass  # For testing purposes
+
 from MDAnalysis.analysis import align, distances, rms
 
 from deepdrivemd.applications.openmm_simulation import (
