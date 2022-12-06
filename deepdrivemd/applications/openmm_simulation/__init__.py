@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 from pydantic import BaseModel
 
@@ -10,7 +10,6 @@ class SimulationFromPDB(BaseModel):
     """Initialize a simulation using an input file."""
 
     pdb_file: Path
-    top_file: Optional[Path] = None
 
 
 class SimulationFromRestart(BaseModel):

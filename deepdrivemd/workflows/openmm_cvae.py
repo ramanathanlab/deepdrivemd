@@ -231,6 +231,11 @@ class DeepDriveMDWorkflow(BaseThinker):
     @agent(startup=True)
     def simulation(self) -> None:
 
+        # TODO: We could generalize this further by simply passing a list of
+        # simulation input directories for which the simlulation app is
+        # responsible for parsing files from. This would help to support
+        # simulation engines that don't use pdb files as input.
+
         # Collect initial PDB files, assumes they are in nested subdirectories,
         # e.g., pdb_dir/system1/system1.pdb, pdb_dir/system2/system2.pdb.
         # This allows us to put topology files in the same subdirectory as the
@@ -240,22 +245,12 @@ class DeepDriveMDWorkflow(BaseThinker):
         assert self.rec is not None
         simulation_workers = self.rec.allocated_slots("simulation")
 
-        # Submit initial batch of queries to workers (Add a buffer to increase utilization)
+        # Submit initial batch of simulations to workers (Add a buffer to increase utilization)
+        # We cycle around the input PDBs, for instance if there is only a single PDB file,
+        # we start all the tasks using it. If there are two input PDBs, we alternate them
+        # between task submissions.
         for _ in range(simulation_workers + 5):
-            # We cycle around the input PDBs, for instance if there is only
-            # a single PDB file, we start all the tasks using it. If there
-            # are two input PDBs, we alternate them between task submissions.
-            pdb_file = next(initial_pdbs)
-            # Scan directory for optional topology file (assumes topology
-            # file is in the same directory as the PDB file and that only
-            # one PDB/topology file exists in each directory.)
-            top_file = next(pdb_file.parent.glob("*.top"), None)
-            if top_file is None:
-                top_file = next(pdb_file.parent.glob("*.prmtop"), None)
-            # Submit simulation task
-            self.submit_simulation(
-                SimulationFromPDB(pdb_file=pdb_file, top_file=top_file)
-            )
+            self.submit_simulation(SimulationFromPDB(pdb_file=next(initial_pdbs)))
 
     @result_processor(topic="simulation")
     def process_simulation_result(self, result: Result) -> None:

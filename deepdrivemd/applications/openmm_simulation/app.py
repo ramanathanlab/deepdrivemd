@@ -253,6 +253,16 @@ class MDSimulationApplication(Application):
         mda_u.trajectory[frame]
         mda_u.atoms.write(str(output_pdb_file))
 
+    @staticmethod
+    def glob_topology(directory: Path) -> Optional[Path]:
+        """Scan directory for optional topology file (assumes topology
+        file is in the same directory as the PDB file and that only
+        one PDB/topology file exists in each directory.)"""
+        top_file = next(directory.glob("*.top"), None)
+        if top_file is None:
+            top_file = next(directory.glob("*.prmtop"), None)
+        return top_file
+
     def init_simulation(self, pdb_file: Path, top_file: Optional[Path]) -> None:
         """Initialize and cache a simulation object."""
         if self.sim is not None:
@@ -273,12 +283,15 @@ class MDSimulationApplication(Application):
         if self.sim is None:
             raise RuntimeError("Tried to continue a simulation that doesn't exist.")
         assert self.pdb_file is not None
+        # TODO: If we are using node_local_storage, then the self.pdb_file will not be found
+        # since it will have been moved back to persistent storage.
         self.pdb_file = self.copy_to_workdir(self.pdb_file)
         self.top_file = self.copy_to_workdir(self.top_file)
 
     def init_simulation_from_pdb(self, simulation_start: SimulationFromPDB) -> None:
         self.pdb_file = self.copy_to_workdir(simulation_start.pdb_file)
-        self.top_file = self.copy_to_workdir(simulation_start.top_file)
+        top_file = self.glob_topology(simulation_start.pdb_file.parent)
+        self.top_file = self.copy_to_workdir(top_file)
         assert self.pdb_file is not None
         self.init_simulation(self.pdb_file, self.top_file)
 
@@ -288,15 +301,10 @@ class MDSimulationApplication(Application):
         sim_dir = simulation_start.sim_dir
         frame = simulation_start.sim_frame
 
-        # Collect PDB and DCD files from previous simulation
+        # Collect PDB, DCD, and topology files from previous simulation
         old_pdb_file = next(sim_dir.glob("*.pdb"))
         dcd_file = next(sim_dir.glob("*.dcd"))
-
-        # Check for optional topology files
-        top_file = next(sim_dir.glob("*.top"), None)
-        if top_file is None:
-            top_file = next(sim_dir.glob("*.prmtop"), None)
-        self.top_file = self.copy_to_workdir(top_file)
+        self.top_file = self.copy_to_workdir(self.glob_topology(sim_dir))
 
         # New pdb file to write, example: run-<uuid>_frame000000.pdb
         pdb_name = f"{old_pdb_file.parent.name}_frame{frame:06}.pdb"
