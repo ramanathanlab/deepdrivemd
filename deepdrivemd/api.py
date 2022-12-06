@@ -1,4 +1,6 @@
 import itertools
+import logging
+import sys
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -54,6 +56,17 @@ class DeepDriveMDSettings(BaseSettings):
     simulation_settings: ApplicationSettings
     train_settings: ApplicationSettings
     inference_settings: ApplicationSettings
+
+    def configure_logging(self) -> None:
+        """Set up logging."""
+        logging.basicConfig(
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            level=logging.INFO,
+            handlers=[
+                logging.FileHandler(self.run_dir / "runtime.log"),
+                logging.StreamHandler(sys.stdout),
+            ],
+        )
 
     @root_validator(pre=True)
     def create_output_dirs(cls, values: Dict[str, Any]) -> Dict[str, Any]:

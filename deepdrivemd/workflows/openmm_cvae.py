@@ -1,8 +1,7 @@
 """DeepDriveMD using OpenMM for simulation and a convolutational
 variational autoencoder for adaptive control."""
+import functools
 import logging
-import sys
-import time
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -78,15 +77,14 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
         # Collect simulation results
         self.inference_input.contact_map_paths.append(output.contact_map_path)
         self.inference_input.rmsd_paths.append(output.rmsd_path)
-        if self.running_inference:
+
+        # Run inference if enough data is available and at least
+        # one round of training has finished.
+        if self.running_inference or not self.model_weights_available:
             return
-        # Run inference if enough data is available
+
         if len(self.inference_input.rmsd_paths) >= self.simulations_per_inference:
             self.running_inference = True
-            # Wait for process_train_result to provide model weights
-            self.logger.info("inference agent waiting for model weights")
-            while not self.model_weights_available:  # TODO: We can't have this block.
-                time.sleep(1)
 
             self.queues.send_inputs(
                 self.inference_input,
@@ -136,16 +134,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = ExperimentSettings.from_yaml(args.config)
     cfg.dump_yaml(cfg.run_dir / "params.yaml")
-
-    # Set up the logging
-    logging.basicConfig(
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        level=logging.INFO,
-        handlers=[
-            logging.FileHandler(cfg.run_dir / "runtime.log"),
-            logging.StreamHandler(sys.stdout),
-        ],
-    )
+    cfg.configure_logging()
 
     # Make the proxy store
     ps_store = ps.store.init_store(
@@ -162,30 +151,30 @@ if __name__ == "__main__":
         proxystore_threshold=10000,
     )
 
+    # Setup the applications
     testing = " --test" if args.test else ""
-    run_simulation = register_application(
-        application,
+    application_factory = functools.partial(
+        register_application,
+        func=application,
+        communication_path=cfg.run_dir / "comm",
+    )
+    run_simulation = application_factory(
         name="run_simulation",
         config=cfg.simulation_settings,
         exec_path="-m deepdrivemd.applications.openmm_simulation.app" + testing,
         return_type=MDSimulationOutput,
-        communication_path=cfg.run_dir / "comm",
     )
-    run_train = register_application(
-        application,
+    run_train = application_factory(
         name="run_train",
         config=cfg.train_settings,
         exec_path="-m deepdrivemd.applications.cvae_train.app" + testing,
         return_type=CVAETrainOutput,
-        communication_path=cfg.run_dir / "comm",
     )
-    run_inference = register_application(
-        application,
+    run_inference = application_factory(
         name="run_inference",
         config=cfg.inference_settings,
         exec_path="-m deepdrivemd.applications.cvae_inference.app" + testing,
         return_type=CVAEInferenceOutput,
-        communication_path=cfg.run_dir / "comm",
     )
 
     # Define the worker configuration
