@@ -67,7 +67,6 @@ class DeepDriveMDSettings(BaseSettings):
         # Specify application output directories
         for name in ["simulation", "train", "inference"]:
             values[f"{name}_settings"]["output_dir"] = run_dir / name
-
         return values
 
 
