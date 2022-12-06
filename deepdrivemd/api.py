@@ -12,12 +12,9 @@ from colmena.redis.queue import ClientQueues
 from colmena.thinker import BaseThinker, ResourceCounter, agent, result_processor
 from pydantic import root_validator
 
-from deepdrivemd.applications.cvae_inference import CVAEInferenceOutput
-from deepdrivemd.applications.cvae_train import CVAETrainOutput
 from deepdrivemd.applications.openmm_simulation import (
     ContinueSimulation,
     MDSimulationInput,
-    MDSimulationOutput,
     SimulationFromPDB,
     SimulationFromRestart,
     SimulationStartType,
@@ -129,7 +126,7 @@ class InferenceCountDoneCallback(DoneCallback):
 
 
 # TODO: Implement resource counter allocations
-# TODO: Generalize typing to remove explicit dependence on CVAE
+# TODO: Generalize typing to remove explicit dependence on OpenMM simulation
 
 
 class DeepDriveMDWorkflow(BaseThinker):
@@ -252,8 +249,7 @@ class DeepDriveMDWorkflow(BaseThinker):
             return self.logger.warning("Bad simulation result")
 
         # Parse simulation output values
-        output: MDSimulationOutput = result.value
-        assert isinstance(output, MDSimulationOutput)
+        output: BaseSettings = result.value
 
         # Result should be used to train the model and infer new restart points
         self.train(output)
@@ -267,8 +263,7 @@ class DeepDriveMDWorkflow(BaseThinker):
         if not result.success:
             return self.logger.warning("Bad train result")
 
-        output: CVAETrainOutput = result.value
-        assert isinstance(output, CVAETrainOutput)
+        output: BaseSettings = result.value
         self.handle_train_output(output)
 
     @result_processor(topic="inference")
@@ -279,22 +274,21 @@ class DeepDriveMDWorkflow(BaseThinker):
         if not result.success:
             return self.logger.warning("Bad inference result")
 
-        output: CVAEInferenceOutput = result.value
-        assert isinstance(output, CVAEInferenceOutput)
+        output: BaseSettings = result.value
         self.handle_inference_output(output)
 
     @abstractmethod
-    def train(self, output: MDSimulationOutput) -> None:
+    def train(self, output: BaseSettings) -> None:
         ...
 
     @abstractmethod
-    def inference(self, output: MDSimulationOutput) -> None:
+    def inference(self, output: BaseSettings) -> None:
         ...
 
     @abstractmethod
-    def handle_train_output(self, output: CVAETrainOutput) -> None:
+    def handle_train_output(self, output: BaseSettings) -> None:
         ...
 
     @abstractmethod
-    def handle_inference_output(self, output: CVAEInferenceOutput) -> None:
+    def handle_inference_output(self, output: BaseSettings) -> None:
         ...
