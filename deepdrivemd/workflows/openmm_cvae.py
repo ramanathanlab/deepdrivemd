@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from argparse import ArgumentParser
 from datetime import datetime
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Queue
 from threading import Semaphore
 from typing import Any, Dict, List
 
@@ -178,6 +178,10 @@ class DeepDriveMDWorkflow(BaseThinker):
         self.trains_finished = 0
         self.done_callbacks = done_callbacks
 
+        # Make sure there is at most one training and inference task running at a time
+        self.running_train = False
+        self.running_inference = False
+
         # For batching training inputs
         self.simulations_per_train = simulations_per_train
         self.train_input = CVAETrainInput(contact_map_paths=[], rmsd_paths=[])
@@ -188,16 +192,12 @@ class DeepDriveMDWorkflow(BaseThinker):
             contact_map_paths=[], rmsd_paths=[], model_weight_path=Path()
         )
 
-        # Communicate information between simulation, train, and inference agents
+        # Communicate information between agents
         self.simulation_input_queue: Queue[SimulationFromRestart] = Queue()
-        self.train_input_queue: Queue[Result] = Queue()
-        self.inference_input_queue: Queue[Result] = Queue()
         self.model_weights_available: bool = False
 
         # Make sure there is at most one training and inference task running at a time
         self.simulation_govenor = Semaphore()
-        self.train_governor = Semaphore()
-        self.inference_governor = Semaphore()
 
         # Allocate resources to each task type
         assert self.rec is not None
@@ -281,51 +281,42 @@ class DeepDriveMDWorkflow(BaseThinker):
         if not result.success:
             return self.logger.warning("Bad simulation result")
 
+        # Parse simulation output values
+        output: MDSimulationOutput = result.value
+        assert isinstance(output, MDSimulationOutput)
+
         # Result should be used to train the model and infer new restart points
-        self.train_input_queue.put(result)
-        self.inference_input_queue.put(result)
+        self.train(output)
+        self.inference(output)
 
         # TODO: When first simulations finish we can reallaocte resources to
         # train/inference to keep utilization a little higher in the begining.
 
-    # TODO: We can use a result_processor for simulation outputs to remove the while True loop
+    def train(self, output: MDSimulationOutput) -> None:
+        # Collect simulation results
+        self.train_input.contact_map_paths.append(output.contact_map_path)
+        self.train_input.rmsd_paths.append(output.rmsd_path)
+        # If a training run is already going, then exit
+        if self.running_train:
+            return
+        # Train model if enough data is available
+        if len(self.train_input.rmsd_paths) >= self.simulations_per_train:
+            self.running_train = True
+            self.queues.send_inputs(
+                self.train_input,
+                method="run_train",
+                topic="train",
+                keep_inputs=True,
+            )
 
-    @agent
-    def train(self) -> None:
-        while not self.done.is_set():
-            # Wait for a result to complete
-            try:
-                result = self.train_input_queue.get(timeout=10)
-            except Empty:
-                continue
-
-            # Parse simulation output values
-            output: MDSimulationOutput = result.value
-            assert isinstance(output, MDSimulationOutput)
-
-            # Collect simulation results
-            self.train_input.contact_map_paths.append(output.contact_map_path)
-            self.train_input.rmsd_paths.append(output.rmsd_path)
-
-            # Train model if enough data is available
-            if len(self.train_input.rmsd_paths) >= self.simulations_per_train:
-                self.train_governor.acquire()  # Make sure only one training task runs at a time
-                self.queues.send_inputs(
-                    self.train_input,
-                    method="run_train",
-                    topic="train",
-                    keep_inputs=True,
-                )
-
-                # Clear batched data
-                self.train_input.contact_map_paths = []
-                self.train_input.rmsd_paths = []
-
-        self.logger.info("Exiting train agent")
+            # Clear batched data
+            self.train_input.contact_map_paths = []
+            self.train_input.rmsd_paths = []
 
     @result_processor(topic="train")
     def process_train_result(self, result: Result) -> None:
         self.trains_finished += 1
+        self.running_train = False
         self.log_result(result, "train")
         if not result.success:
             return self.logger.warning("Bad train result")
@@ -334,57 +325,43 @@ class DeepDriveMDWorkflow(BaseThinker):
         assert isinstance(output, CVAETrainOutput)
         self.inference_input.model_weight_path = output.model_weight_path
         self.model_weights_available = True
-        self.train_governor.release()  # Make sure only one training task runs at a time
         self.logger.info(f"Updated model_weight_path to: {output.model_weight_path}")
 
-    @agent
-    def inference(self) -> None:
-        while not self.done.is_set():
-            # Wait for a result to complete
-            try:
-                result = self.inference_input_queue.get(timeout=10)
-            except Empty:
-                continue
+    def inference(self, output: MDSimulationOutput) -> None:
+        # Collect simulation results
+        self.inference_input.contact_map_paths.append(output.contact_map_path)
+        self.inference_input.rmsd_paths.append(output.rmsd_path)
+        if self.running_inference:
+            return
+        # Run inference if enough data is available
+        if len(self.inference_input.rmsd_paths) >= self.simulations_per_inference:
+            self.running_inference = True
+            # Wait for process_train_result to provide model weights
+            self.logger.info("inference agent waiting for model weights")
+            while not self.model_weights_available:
+                time.sleep(1)
 
-            # Parse simulation output values
-            output: MDSimulationOutput = result.value
-            assert isinstance(output, MDSimulationOutput)
+            self.queues.send_inputs(
+                self.inference_input,
+                method="run_inference",
+                topic="inference",
+                keep_inputs=True,
+            )
 
-            # Collect simulation results
-            self.inference_input.contact_map_paths.append(output.contact_map_path)
-            self.inference_input.rmsd_paths.append(output.rmsd_path)
-
-            # Run inference if enough data is available
-            if len(self.inference_input.rmsd_paths) >= self.simulations_per_inference:
-                # Wait for process_train_result to provide model weights
-                while not self.model_weights_available:
-                    self.logger.info("inference agent waiting for model weights")
-                    time.sleep(10)
-
-                self.inference_governor.acquire()  # Make sure only one inference task runs at a time
-                self.queues.send_inputs(
-                    self.inference_input,
-                    method="run_inference",
-                    topic="inference",
-                    keep_inputs=True,
-                )
-
-                # Clear batched data
-                self.inference_input.contact_map_paths = []
-                self.inference_input.rmsd_paths = []
-
-        self.logger.info("Exiting inference")
+            # Clear batched data
+            self.inference_input.contact_map_paths = []
+            self.inference_input.rmsd_paths = []
 
     @result_processor(topic="inference")
     def process_inference_result(self, result: Result) -> None:
         self.inferences_finished += 1
+        self.running_inference = False
         self.log_result(result, "inference")
         if not result.success:
             return self.logger.warning("Bad inference result")
 
         output: CVAEInferenceOutput = result.value
         assert isinstance(output, CVAEInferenceOutput)
-        self.inference_governor.release()  # Make sure only one inference task runs at a time
 
         # Add restart points to simulation input queue while holding the lock
         # so that the simulations see the latest information. Note that
@@ -484,7 +461,8 @@ if __name__ == "__main__":
         simulations_per_train=cfg.simulations_per_train,
         simulations_per_inference=cfg.simulations_per_inference,
         done_callbacks=[
-            SimulationCountDoneCallback(cfg.num_total_simulations),
+            InferenceCountDoneCallback(2),  # Testing
+            # SimulationCountDoneCallback(cfg.num_total_simulations),
             TimeoutDoneCallback(cfg.duration_sec),
         ],
     )
