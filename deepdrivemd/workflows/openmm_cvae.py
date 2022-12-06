@@ -213,7 +213,7 @@ class DeepDriveMDWorkflow(BaseThinker):
             MDSimulationInput(simulation_start=simulation_start),
             method="run_simulation",
             topic="simulation",
-            keep_inputs=True,
+            keep_inputs=False,
         )
 
     @agent
@@ -227,7 +227,7 @@ class DeepDriveMDWorkflow(BaseThinker):
             time.sleep(1)
 
     @agent(startup=True)
-    def simulation(self) -> None:
+    def start_simulations(self) -> None:
 
         # TODO: We could generalize this further by simply passing a list of
         # simulation input directories for which the simlulation app is
@@ -287,8 +287,29 @@ class DeepDriveMDWorkflow(BaseThinker):
         self.train(output)
         self.inference(output)
 
-        # TODO: When first simulations finish we can reallaocte resources to
-        # train/inference to keep utilization a little higher in the begining.
+    @result_processor(topic="train")
+    def process_train_result(self, result: Result) -> None:
+        self.trains_finished += 1
+        self.running_train = False
+        self.log_result(result, "train")
+        if not result.success:
+            return self.logger.warning("Bad train result")
+
+        output: CVAETrainOutput = result.value
+        assert isinstance(output, CVAETrainOutput)
+        self.process_train_output(output)
+
+    @result_processor(topic="inference")
+    def process_inference_result(self, result: Result) -> None:
+        self.inferences_finished += 1
+        self.running_inference = False
+        self.log_result(result, "inference")
+        if not result.success:
+            return self.logger.warning("Bad inference result")
+
+        output: CVAEInferenceOutput = result.value
+        assert isinstance(output, CVAEInferenceOutput)
+        self.process_inference_output(output)
 
     def train(self, output: MDSimulationOutput) -> None:
         # Collect simulation results
@@ -304,26 +325,12 @@ class DeepDriveMDWorkflow(BaseThinker):
                 self.train_input,
                 method="run_train",
                 topic="train",
-                keep_inputs=True,
+                keep_inputs=False,
             )
 
             # Clear batched data
             self.train_input.contact_map_paths = []
             self.train_input.rmsd_paths = []
-
-    @result_processor(topic="train")
-    def process_train_result(self, result: Result) -> None:
-        self.trains_finished += 1
-        self.running_train = False
-        self.log_result(result, "train")
-        if not result.success:
-            return self.logger.warning("Bad train result")
-
-        output: CVAETrainOutput = result.value
-        assert isinstance(output, CVAETrainOutput)
-        self.inference_input.model_weight_path = output.model_weight_path
-        self.model_weights_available = True
-        self.logger.info(f"Updated model_weight_path to: {output.model_weight_path}")
 
     def inference(self, output: MDSimulationOutput) -> None:
         # Collect simulation results
@@ -343,24 +350,19 @@ class DeepDriveMDWorkflow(BaseThinker):
                 self.inference_input,
                 method="run_inference",
                 topic="inference",
-                keep_inputs=True,
+                keep_inputs=False,
             )
 
             # Clear batched data
             self.inference_input.contact_map_paths = []
             self.inference_input.rmsd_paths = []
 
-    @result_processor(topic="inference")
-    def process_inference_result(self, result: Result) -> None:
-        self.inferences_finished += 1
-        self.running_inference = False
-        self.log_result(result, "inference")
-        if not result.success:
-            return self.logger.warning("Bad inference result")
+    def process_train_output(self, output: CVAETrainOutput) -> None:
+        self.inference_input.model_weight_path = output.model_weight_path
+        self.model_weights_available = True
+        self.logger.info(f"Updated model_weight_path to: {output.model_weight_path}")
 
-        output: CVAEInferenceOutput = result.value
-        assert isinstance(output, CVAEInferenceOutput)
-
+    def process_inference_output(self, output: CVAEInferenceOutput) -> None:
         # Add restart points to simulation input queue while holding the lock
         # so that the simulations see the latest information. Note that
         # the output restart values should be sorted such that the first
