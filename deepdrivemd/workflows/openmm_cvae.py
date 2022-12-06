@@ -195,8 +195,6 @@ class DeepDriveMDWorkflow(BaseThinker):
         # Communicate information between agents
         self.simulation_input_queue: Queue[SimulationFromRestart] = Queue()
         self.model_weights_available: bool = False
-
-        # Make sure there is at most one training and inference task running at a time
         self.simulation_govenor = Semaphore()
 
         # Allocate resources to each task type
