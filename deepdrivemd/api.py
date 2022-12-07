@@ -236,13 +236,18 @@ class DeepDriveMDWorkflow(BaseThinker):
     @result_processor(topic="simulation")
     def process_simulation_result(self, result: Result) -> None:
         self.rec.release("simulation", 1)
+        self.simulations_finished += 1
+        # Log simulation job results
+        self.log_result(result, "simulation")
+        if not result.success:
+            return self.logger.warning("Bad simulation result")
         # This function is running an implicit while-true loop
         # we need to break out if the done flag has been sent,
         # otherwise it will continue a new simulation even if
         # the train and inference agents have both exited.
+        # TODO: Is this necessary or will the result_processor not get called?
         if self.done.is_set():
             return
-        self.simulations_finished += 1
         # Select a method to start another simulation. If AI inference
         # is currently adding new restart points to the queue, we block
         # until it has finished so we can use the latest information.
@@ -259,11 +264,6 @@ class DeepDriveMDWorkflow(BaseThinker):
         inputs = MDSimulationInput(simulation_start=simulation_start)
         self.submit_task(inputs, "simulation")
 
-        # Log simulation job results
-        self.log_result(result, "simulation")
-        if not result.success:
-            return self.logger.warning("Bad simulation result")
-
         # Parse simulation output values
         output: BaseSettings = result.value
 
@@ -273,8 +273,8 @@ class DeepDriveMDWorkflow(BaseThinker):
 
     @result_processor(topic="train")
     def process_train_result(self, result: Result) -> None:
-        self.trains_finished += 1
         self.rec.release("train", 1)
+        self.trains_finished += 1
         self.log_result(result, "train")
         if not result.success:
             return self.logger.warning("Bad train result")
@@ -284,8 +284,8 @@ class DeepDriveMDWorkflow(BaseThinker):
 
     @result_processor(topic="inference")
     def process_inference_result(self, result: Result) -> None:
-        self.inferences_finished += 1
         self.rec.release("inference", 1)
+        self.inferences_finished += 1
         self.log_result(result, "inference")
         if not result.success:
             return self.logger.warning("Bad inference result")
