@@ -49,7 +49,7 @@ class DeepDriveMDSettings(BaseSettings):
     simulations_per_inference: int
     """Number of simulation results to use between inference tasks."""
 
-    # Application settings
+    # Application settings (should be overriden)
     simulation_settings: ApplicationSettings
     train_settings: ApplicationSettings
     inference_settings: ApplicationSettings

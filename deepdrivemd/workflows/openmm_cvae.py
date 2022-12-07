@@ -30,7 +30,7 @@ from deepdrivemd.applications.openmm_simulation import (
     MDSimulationSettings,
     SimulationFromRestart,
 )
-from deepdrivemd.parsl import create_local_configuration
+from deepdrivemd.parsl import ComputeSettingsTypes
 from deepdrivemd.utils import application, register_application
 
 
@@ -117,6 +117,7 @@ class ExperimentSettings(DeepDriveMDSettings):
     simulation_settings: MDSimulationSettings
     train_settings: CVAETrainSettings
     inference_settings: CVAEInferenceSettings
+    compute_settings: ComputeSettingsTypes
 
 
 if __name__ == "__main__":
@@ -169,8 +170,9 @@ if __name__ == "__main__":
         return_type=CVAEInferenceOutput,
     )
 
-    # Define the worker configuration
-    parsl_config = create_local_configuration(cfg.run_dir / "run-info")
+    # Define the parsl configuration (this can be done using the config_factory
+    # for common use cases or by defining your own configuration.)
+    parsl_config = cfg.compute_settings.config_factory(cfg.run_dir / "run-info")
 
     doer = ParslTaskServer(
         [run_simulation, run_train, run_inference], queues, parsl_config
