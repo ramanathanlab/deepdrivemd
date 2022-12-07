@@ -18,7 +18,6 @@ The computational motif implemented by DeepDriveMD to support ML/AI-coupled simu
 To install `deepdrivemd`:
 ```bash
 conda create -n deepdrivemd python=3.9 -y
-conda install -c anaconda redis -y
 pip install git+https://github.com/ramanathanlab/deepdrivemd.git
 ```
 
@@ -41,12 +40,6 @@ To clean up the runs (by default these are ignored by git):
 ```bash
 rm -r runs/
 ```
-**Note**: Running the workflow requires that a Redis server is running.
-After following the Installation Notes, you can start a redis server which logs to `redis.log` by running:
-```bash
-nohup redis-server redis.conf --port 6379 &> redis.log &
-```
-To stop the server, run `kill <pid>` given the pid number from running `cat redis.log | grep pid`
 
 **Note**: Mock testing is specified in each of the application scripts `deepdrivemd/applications/*/app.py`.
 
