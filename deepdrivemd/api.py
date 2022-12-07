@@ -21,12 +21,7 @@ from deepdrivemd.applications.openmm_simulation import (
     SimulationFromPDB,
     SimulationFromRestart,
 )
-from deepdrivemd.config import (
-    ApplicationSettings,
-    BaseComputeSettings,
-    BaseSettings,
-    path_validator,
-)
+from deepdrivemd.config import ApplicationSettings, BaseSettings, path_validator
 
 
 class DeepDriveMDSettings(BaseSettings):
@@ -53,8 +48,6 @@ class DeepDriveMDSettings(BaseSettings):
     """Number of simulation results to use between model training tasks."""
     simulations_per_inference: int
     """Number of simulation results to use between inference tasks."""
-    compute_settings: BaseComputeSettings
-    """Compute settings (HPC platform, number of GPUs, etc)."""
 
     # Application settings (should be overriden)
     simulation_settings: ApplicationSettings

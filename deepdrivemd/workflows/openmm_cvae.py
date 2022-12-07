@@ -170,7 +170,8 @@ if __name__ == "__main__":
         return_type=CVAEInferenceOutput,
     )
 
-    # Define the worker configuration
+    # Define the parsl configuration (this can be done using the config_factory
+    # for common use cases or by defining your own configuration.)
     parsl_config = cfg.compute_settings.config_factory(cfg.run_dir / "run-info")
 
     doer = ParslTaskServer(

@@ -1,11 +1,35 @@
 """Utilities to build Parsl configurations."""
+from abc import ABC, abstractmethod
 from typing import Literal, Tuple, Union
 
 from parsl.config import Config
 from parsl.executors import HighThroughputExecutor
 from parsl.providers import LocalProvider
 
-from deepdrivemd.config import BaseComputeSettings, PathLike
+from deepdrivemd.config import BaseSettings, PathLike
+
+
+class BaseComputeSettings(BaseSettings, ABC):
+    """Compute settings (HPC platform, number of GPUs, etc)."""
+
+    name: Literal[""] = ""
+    """Name of the platform to use."""
+
+    @abstractmethod
+    def config_factory(self, run_dir: PathLike) -> Config:
+        """Create a new Parsl configuration.
+
+        Parameters
+        ----------
+        run_dir : PathLike
+            Path to store monitoring DB and parsl logs.
+
+        Returns
+        -------
+        Config
+            Parsl configuration.
+        """
+        ...
 
 
 class LocalSettings(BaseComputeSettings):
