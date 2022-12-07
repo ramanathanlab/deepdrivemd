@@ -183,6 +183,7 @@ class DeepDriveMDWorkflow(BaseThinker):
         self.simulation_input_queue: Queue[SimulationFromRestart] = Queue()
         self.simulation_govenor = Semaphore()
         self.run_training = Event()
+        self.run_inference = Event()
 
     def log_result(self, result: Result, topic: str) -> None:
         """Write a JSON result per line of the output file."""
