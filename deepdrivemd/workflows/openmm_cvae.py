@@ -40,6 +40,11 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
     ) -> None:
         super().__init__(**kwargs)
 
+        # Make sure there is at most one training and inference task running at a time
+        self.running_train = False
+        self.running_inference = False
+
+        # Make sure there has been at least one training task complete before running inference
         self.model_weights_available: bool = False
 
         # For batching training inputs
@@ -62,13 +67,7 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
         # Train model if enough data is available
         if len(self.train_input.rmsd_paths) >= self.simulations_per_train:
             self.running_train = True
-            self.queues.send_inputs(
-                self.train_input,
-                method="run_train",
-                topic="train",
-                keep_inputs=False,
-            )
-
+            self.submit_task(self.train_input, "train")
             # Clear batched data
             self.train_input.contact_map_paths = []
             self.train_input.rmsd_paths = []
@@ -85,24 +84,19 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
 
         if len(self.inference_input.rmsd_paths) >= self.simulations_per_inference:
             self.running_inference = True
-
-            self.queues.send_inputs(
-                self.inference_input,
-                method="run_inference",
-                topic="inference",
-                keep_inputs=False,
-            )
-
+            self.submit_task(self.inference_input, "inference")
             # Clear batched data
             self.inference_input.contact_map_paths = []
             self.inference_input.rmsd_paths = []
 
     def handle_train_output(self, output: CVAETrainOutput) -> None:
+        self.running_train = False
         self.inference_input.model_weight_path = output.model_weight_path
         self.model_weights_available = True
         self.logger.info(f"Updated model_weight_path to: {output.model_weight_path}")
 
     def handle_inference_output(self, output: CVAEInferenceOutput) -> None:
+        self.running_inference = False
         # Add restart points to simulation input queue while holding the lock
         # so that the simulations see the latest information. Note that
         # the output restart values should be sorted such that the first

@@ -19,9 +19,8 @@ from deepdrivemd.applications.openmm_simulation import (
     MDSimulationInput,
     SimulationFromPDB,
     SimulationFromRestart,
-    SimulationStartType,
 )
-from deepdrivemd.config import ApplicationSettings, BaseSettings
+from deepdrivemd.config import ApplicationSettings, BaseSettings, path_validator
 
 
 class DeepDriveMDSettings(BaseSettings):
@@ -82,6 +81,9 @@ class DeepDriveMDSettings(BaseSettings):
             values[f"{name}_settings"]["output_dir"] = run_dir / name
         return values
 
+    # validators
+    _input_pdb_dir_exists = path_validator("input_pdb_dir")
+
 
 class DoneCallback(ABC):
     @abstractmethod
@@ -92,7 +94,7 @@ class DoneCallback(ABC):
 
 class TimeoutDoneCallback(DoneCallback):
     def __init__(self, duration_sec: float) -> None:
-        """Exits from DeepDriveMD after duration_sec seconds has elapsed.
+        """Exit from DeepDriveMD after duration_sec seconds has elapsed.
 
         Parameters
         ----------
@@ -109,7 +111,7 @@ class TimeoutDoneCallback(DoneCallback):
 
 class SimulationCountDoneCallback(DoneCallback):
     def __init__(self, total_simulations: int) -> None:
-        """Exits from DeepDriveMD after a certain number of simulations have finished.
+        """Exit from DeepDriveMD after a certain number of simulations have finished.
 
         Parameters
         ----------
@@ -124,7 +126,7 @@ class SimulationCountDoneCallback(DoneCallback):
 
 class InferenceCountDoneCallback(DoneCallback):
     def __init__(self, total_inferences: int) -> None:
-        """Exits from DeepDriveMD after a certain number of inference tasks have finished.
+        """Exit from DeepDriveMD after a certain number of inference tasks have finished.
 
         Parameters
         ----------
@@ -137,11 +139,12 @@ class InferenceCountDoneCallback(DoneCallback):
         return workflow.inferences_finished >= self.total_inferences
 
 
-# TODO: Implement resource counter allocations
 # TODO: Generalize typing to remove explicit dependence on OpenMM simulation
 
 
 class DeepDriveMDWorkflow(BaseThinker):
+    rec: ResourceCounter  # To avoid needing assert not None statements
+
     def __init__(
         self,
         queue: ClientQueues,
@@ -170,16 +173,11 @@ class DeepDriveMDWorkflow(BaseThinker):
         self.trains_finished = 0
         self.done_callbacks = done_callbacks
 
-        # Make sure there is at most one training and inference task running at a time
-        self.running_train = False
-        self.running_inference = False
-
         # Communicate information between agents
         self.simulation_input_queue: Queue[SimulationFromRestart] = Queue()
         self.simulation_govenor = Semaphore()
 
         # Allocate resources to each task type
-        assert self.rec is not None
         self.rec.reallocate(None, "simulation", simulation_workers)
         self.rec.reallocate(None, "train", train_workers)
         self.rec.reallocate(None, "inference", inference_workers)
@@ -189,12 +187,14 @@ class DeepDriveMDWorkflow(BaseThinker):
         with open(self.result_dir / f"{topic}.json", "a") as f:
             print(result.json(exclude={"inputs", "value"}), file=f)
 
-    def submit_simulation(self, simulation_start: SimulationStartType) -> None:
+    def submit_task(self, inputs: BaseSettings, topic: str) -> None:
+        # TODO: If we uncomment this line, the program gets stuck after
+        # the first batch of simulations finish. It can be fixed if
+        # we remove the +5 buffer when submitting the initial batch
+        # of simulations.
+        # self.rec.acquire(topic, 1, cancel_if=self.done)
         self.queues.send_inputs(
-            MDSimulationInput(simulation_start=simulation_start),
-            method="run_simulation",
-            topic="simulation",
-            keep_inputs=False,
+            inputs, method=f"run_{topic}", topic=topic, keep_inputs=False
         )
 
     @agent
@@ -221,7 +221,6 @@ class DeepDriveMDWorkflow(BaseThinker):
         # PDB file, which is parsed below.
         initial_pdbs = itertools.cycle(self.input_pdb_dir.glob("**/*.pdb"))
 
-        assert self.rec is not None
         simulation_workers = self.rec.allocated_slots("simulation")
 
         # Submit initial batch of simulations to workers (Add a buffer to increase utilization)
@@ -229,10 +228,14 @@ class DeepDriveMDWorkflow(BaseThinker):
         # we start all the tasks using it. If there are two input PDBs, we alternate them
         # between task submissions.
         for _ in range(simulation_workers + 5):
-            self.submit_simulation(SimulationFromPDB(pdb_file=next(initial_pdbs)))
+            # TODO: Clean up this API so that it works for a generalized simulation engine
+            simulation_start = SimulationFromPDB(pdb_file=next(initial_pdbs))
+            inputs = MDSimulationInput(simulation_start=simulation_start)
+            self.submit_task(inputs, "simulation")
 
     @result_processor(topic="simulation")
     def process_simulation_result(self, result: Result) -> None:
+        self.rec.release("simulation", 1)
         # This function is running an implicit while-true loop
         # we need to break out if the done flag has been sent,
         # otherwise it will continue a new simulation even if
@@ -253,7 +256,8 @@ class DeepDriveMDWorkflow(BaseThinker):
 
         # Submit another simulation as soon as the previous one finishes
         # to keep utilization high
-        self.submit_simulation(simulation_start)
+        inputs = MDSimulationInput(simulation_start=simulation_start)
+        self.submit_task(inputs, "simulation")
 
         # Log simulation job results
         self.log_result(result, "simulation")
@@ -270,7 +274,7 @@ class DeepDriveMDWorkflow(BaseThinker):
     @result_processor(topic="train")
     def process_train_result(self, result: Result) -> None:
         self.trains_finished += 1
-        self.running_train = False
+        self.rec.release("train", 1)
         self.log_result(result, "train")
         if not result.success:
             return self.logger.warning("Bad train result")
@@ -281,7 +285,7 @@ class DeepDriveMDWorkflow(BaseThinker):
     @result_processor(topic="inference")
     def process_inference_result(self, result: Result) -> None:
         self.inferences_finished += 1
-        self.running_inference = False
+        self.rec.release("inference", 1)
         self.log_result(result, "inference")
         if not result.success:
             return self.logger.warning("Bad inference result")
