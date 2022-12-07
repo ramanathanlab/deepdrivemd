@@ -233,9 +233,7 @@ class DeepDriveMDWorkflow(BaseThinker):
             return self.logger.warning("Bad simulation result")
         # This function is running an implicit while-true loop
         # we need to break out if the done flag has been sent,
-        # otherwise it will continue a new simulation even if
-        # the train and inference agents have both exited.
-        # TODO: Is this necessary or will the result_processor not get called?
+        # otherwise it will submit a new simulation.
         if self.done.is_set():
             return
         # Select a method to start another simulation. If AI inference
