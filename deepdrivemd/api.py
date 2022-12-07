@@ -3,6 +3,7 @@ import logging
 import sys
 import time
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
@@ -121,7 +122,7 @@ class SimulationCountDoneCallback(DoneCallback):
         self.total_simulations = total_simulations
 
     def workflow_finished(self, workflow: "DeepDriveMDWorkflow") -> bool:
-        return workflow.simulations_finished >= self.total_simulations
+        return workflow.task_counter["simulation"] >= self.total_simulations
 
 
 class InferenceCountDoneCallback(DoneCallback):
@@ -136,7 +137,7 @@ class InferenceCountDoneCallback(DoneCallback):
         self.total_inferences = total_inferences
 
     def workflow_finished(self, workflow: "DeepDriveMDWorkflow") -> bool:
-        return workflow.inferences_finished >= self.total_inferences
+        return workflow.task_counter["inference"] >= self.total_inferences
 
 
 # TODO: Generalize typing to remove explicit dependence on OpenMM simulation
@@ -167,10 +168,8 @@ class DeepDriveMDWorkflow(BaseThinker):
         self.result_dir = result_dir
         self.input_pdb_dir = input_pdb_dir
 
-        # Convergence criterion
-        self.simulations_finished = 0
-        self.inferences_finished = 0
-        self.trains_finished = 0
+        # Number of times a given task has been submitted
+        self.task_counter = defaultdict(int)
         self.done_callbacks = done_callbacks
 
         # Communicate information between agents
@@ -196,6 +195,7 @@ class DeepDriveMDWorkflow(BaseThinker):
         self.queues.send_inputs(
             inputs, method=f"run_{topic}", topic=topic, keep_inputs=False
         )
+        self.task_counter[topic] += 1
 
     @agent
     def main_loop(self) -> None:
@@ -236,7 +236,6 @@ class DeepDriveMDWorkflow(BaseThinker):
     @result_processor(topic="simulation")
     def process_simulation_result(self, result: Result) -> None:
         self.rec.release("simulation", 1)
-        self.simulations_finished += 1
         # Log simulation job results
         self.log_result(result, "simulation")
         if not result.success:
@@ -274,7 +273,6 @@ class DeepDriveMDWorkflow(BaseThinker):
     @result_processor(topic="train")
     def process_train_result(self, result: Result) -> None:
         self.rec.release("train", 1)
-        self.trains_finished += 1
         self.log_result(result, "train")
         if not result.success:
             return self.logger.warning("Bad train result")
@@ -285,7 +283,6 @@ class DeepDriveMDWorkflow(BaseThinker):
     @result_processor(topic="inference")
     def process_inference_result(self, result: Result) -> None:
         self.rec.release("inference", 1)
-        self.inferences_finished += 1
         self.log_result(result, "inference")
         if not result.success:
             return self.logger.warning("Bad inference result")
