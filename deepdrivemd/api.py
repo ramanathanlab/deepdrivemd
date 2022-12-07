@@ -11,7 +11,7 @@ from threading import Semaphore
 from typing import Any, Dict, List
 
 from colmena.models import Result
-from colmena.redis.queue import ClientQueues
+from colmena.queue import ColmenaQueues
 from colmena.thinker import BaseThinker, ResourceCounter, agent, result_processor
 from pydantic import root_validator
 
@@ -149,7 +149,7 @@ class DeepDriveMDWorkflow(BaseThinker):
 
     def __init__(
         self,
-        queue: ClientQueues,
+        queue: ColmenaQueues,
         result_dir: Path,
         input_pdb_dir: Path,
         num_workers: int,

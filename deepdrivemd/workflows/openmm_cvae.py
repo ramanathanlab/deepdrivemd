@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 import proxystore as ps
-from colmena.redis.queue import make_queue_pairs
+from colmena.queue.python import PipeQueues
 from colmena.task_server import ParslTaskServer
 
 from deepdrivemd.api import (
@@ -136,9 +136,7 @@ if __name__ == "__main__":
     )
 
     # Make the queues
-    client_queues, server_queues = make_queue_pairs(
-        cfg.redishost,
-        cfg.redisport,
+    queues = PipeQueues(
         serialization_method="pickle",
         topics=["simulation", "train", "inference"],
         proxystore_name="file",
@@ -177,13 +175,13 @@ if __name__ == "__main__":
 
     doer = ParslTaskServer(
         [run_simulation, run_train, run_inference],
-        server_queues,
+        queues,
         parsl_config,
         default_executors=default_executors,
     )
 
     thinker = DeepDriveMD_OpenMM_CVAE(
-        queue=client_queues,
+        queue=queues,
         result_dir=cfg.run_dir / "result",
         input_pdb_dir=cfg.input_pdb_dir,
         simulation_workers=cfg.simulation_workers,
@@ -209,7 +207,7 @@ if __name__ == "__main__":
         thinker.join()
         logging.info("Task generator has completed")
     finally:
-        client_queues.send_kill_signal()
+        queues.send_kill_signal()
 
     # Wait for the task server to complete
     doer.join()
