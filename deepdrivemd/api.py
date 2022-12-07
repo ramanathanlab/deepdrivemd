@@ -191,7 +191,7 @@ class DeepDriveMDWorkflow(BaseThinker):
         # the first batch of simulations finish. It can be fixed if
         # we remove the +5 buffer when submitting the initial batch
         # of simulations.
-        # self.rec.acquire(topic, 1, cancel_if=self.done)
+        self.rec.acquire(topic, 1, cancel_if=self.done)
         self.queues.send_inputs(
             inputs, method=f"run_{topic}", topic=topic, keep_inputs=False
         )
@@ -227,7 +227,7 @@ class DeepDriveMDWorkflow(BaseThinker):
         # We cycle around the input PDBs, for instance if there is only a single PDB file,
         # we start all the tasks using it. If there are two input PDBs, we alternate them
         # between task submissions.
-        for _ in range(simulation_workers + 5):
+        for _ in range(simulation_workers):
             # TODO: Clean up this API so that it works for a generalized simulation engine
             simulation_start = SimulationFromPDB(pdb_file=next(initial_pdbs))
             inputs = MDSimulationInput(simulation_start=simulation_start)

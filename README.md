@@ -17,9 +17,14 @@ The computational motif implemented by DeepDriveMD to support ML/AI-coupled simu
 
 To install `deepdrivemd`:
 ```bash
-git clone https://github.com/ramanathanlab/deepdrivemd.git
-cd deepdrivemd
-make install
+conda create -n deepdrivemd python=3.9 -y
+conda install -c anaconda redis -y
+pip install git+https://github.com/ramanathanlab/deepdrivemd.git
+```
+
+To install OpenMM for simulations:
+```bash
+conda install -c conda-forge openmm -y
 ```
 
 ## Usage
