@@ -244,8 +244,7 @@ class DeepDriveMDWorkflow(BaseThinker):
 
         # This function is running an implicit while-true loop
         # we need to break out if the done flag has been sent,
-        # otherwise it will continue a new simulation even if
-        # the train and inference agents have both exited.
+        # otherwise it will submit a new simulation.
         if self.done.is_set():
             return
 
