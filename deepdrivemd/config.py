@@ -1,8 +1,10 @@
 import json
+from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional, Type, TypeVar, Union
+from typing import Literal, Optional, Type, TypeVar, Union
 
 import yaml
+from parsl.config import Config
 from pydantic import BaseSettings as _BaseSettings
 from pydantic import validator
 
@@ -49,3 +51,24 @@ class ApplicationSettings(BaseSettings):
         v = v.resolve()
         v.mkdir(exist_ok=True, parents=True)
         return v
+
+
+class BaseComputeSettings(BaseSettings, ABC):
+    name: Literal[""] = ""
+    """Name of the platform to use."""
+
+    @abstractmethod
+    def config_factory(self, run_dir: PathLike) -> Config:
+        """Create a new Parsl configuration.
+
+        Parameters
+        ----------
+        run_dir : PathLike
+            Path to store monitoring DB and parsl logs.
+
+        Returns
+        -------
+        Config
+            Parsl configuration.
+        """
+        ...

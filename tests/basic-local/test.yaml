@@ -4,6 +4,9 @@ simulations_per_train: 2
 simulations_per_inference: 2
 num_total_simulations: 4
 
+compute_settings:
+  name: local
+
 simulation_settings:
   simulation_length_ns: 1
   rmsd_reference_pdb: data/1fme/1FME-folded.pdb
