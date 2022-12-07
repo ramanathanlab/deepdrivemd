@@ -144,9 +144,6 @@ class InferenceCountDoneCallback(DoneCallback):
 
 
 class DeepDriveMDWorkflow(BaseThinker):
-
-    rec: ResourceCounter  # To avoid needing assert not None statements
-
     def __init__(
         self,
         queue: ColmenaQueues,
