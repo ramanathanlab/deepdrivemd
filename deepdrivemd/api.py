@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 
 from colmena.models import Result
 from colmena.queue import ColmenaQueues
-from colmena.thinker import BaseThinker, ResourceCounter, agent, result_processor
+from colmena.thinker import BaseThinker, agent, result_processor
 from pydantic import root_validator
 
 from deepdrivemd.applications.openmm_simulation import (
@@ -41,12 +41,9 @@ class DeepDriveMDSettings(BaseSettings):
     """Number of simulations before signalling to stop (more simulations may be run)."""
     duration_sec: float = float("inf")
     """Maximum number of seconds to run workflow before signalling to stop (more time may elapse)."""
-    simulation_workers: int
-    """Number of simulation tasks to run in parallel."""
-    train_workers: int = 1
-    """Number of training tasks to run at a time."""
-    inference_workers: int = 1
-    """Number of inference tasks to run at a time."""
+    num_workers: int
+    """Number of workers available for executing simulations, training, and inference tasks.
+    One worker is reserved for each training and inference task, the rest go to simulation."""
     simulations_per_train: int
     """Number of simulation results to use between model training tasks."""
     simulations_per_inference: int
@@ -162,7 +159,9 @@ class DeepDriveMDWorkflow(BaseThinker):
         input_pdb_dir:
             Directory holding initial starting structures
         num_workers:
-            Number of workers available for executing simulations, training, and inference tasks
+            Number of workers available for executing simulations, training,
+            and inference tasks. One worker is reserved for each training
+            and inference task, the rest go to simulation.
         done_callbacks:
             Callbacks that can trigger a run to end
         """
@@ -217,11 +216,10 @@ class DeepDriveMDWorkflow(BaseThinker):
         # PDB file, which is parsed below.
         initial_pdbs = itertools.cycle(self.input_pdb_dir.glob("**/*.pdb"))
 
-        # Submit initial batch of simulations to workers (Add a buffer to increase utilization)
         # We cycle around the input PDBs, for instance if there is only a single PDB file,
         # we start all the tasks using it. If there are two input PDBs, we alternate them
         # between task submissions.
-        for _ in range(self.num_workers):
+        for _ in range(self.num_workers - 2):
             # TODO: Clean up this API so that it works for a generalized simulation engine
             simulation_start = SimulationFromPDB(pdb_file=next(initial_pdbs))
             inputs = MDSimulationInput(simulation_start=simulation_start)

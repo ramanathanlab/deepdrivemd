@@ -180,9 +180,7 @@ if __name__ == "__main__":
         queue=queues,
         result_dir=cfg.run_dir / "result",
         input_pdb_dir=cfg.input_pdb_dir,
-        simulation_workers=cfg.simulation_workers,
-        train_workers=cfg.train_workers,
-        inference_workers=cfg.inference_workers,
+        num_workers=cfg.num_workers,
         simulations_per_train=cfg.simulations_per_train,
         simulations_per_inference=cfg.simulations_per_inference,
         done_callbacks=[

@@ -1,8 +1,8 @@
 input_pdb_dir: data/1fme/system
-simulation_workers: 4
-simulations_per_train: 4
-simulations_per_inference: 4
-num_total_simulations: 8
+num_workers: 4
+simulations_per_train: 2
+simulations_per_inference: 2
+num_total_simulations: 4
 
 simulation_settings:
   simulation_length_ns: 1
@@ -13,4 +13,4 @@ train_settings:
 
 inference_settings:
   cvae_settings_yaml: tests/basic-local/cvae-settings.yaml
-  num_outliers: 4
+  num_outliers: 2
