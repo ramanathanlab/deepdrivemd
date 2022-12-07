@@ -11,7 +11,7 @@ from threading import Semaphore
 from typing import Any, Dict, List
 
 from colmena.models import Result
-from colmena.redis.queue import ClientQueues
+from colmena.queue import ColmenaQueues
 from colmena.thinker import BaseThinker, ResourceCounter, agent, result_processor
 from pydantic import root_validator
 
@@ -144,29 +144,34 @@ class InferenceCountDoneCallback(DoneCallback):
 
 
 class DeepDriveMDWorkflow(BaseThinker):
-    rec: ResourceCounter  # To avoid needing assert not None statements
-
     def __init__(
         self,
-        queue: ClientQueues,
+        queue: ColmenaQueues,
         result_dir: Path,
         input_pdb_dir: Path,
-        simulation_workers: int,
-        train_workers: int,
-        inference_workers: int,
+        num_workers: int,
         done_callbacks: List[DoneCallback],
     ) -> None:
-
-        resource_counter = ResourceCounter(
-            total_slots=simulation_workers + train_workers + inference_workers,
-            task_types=["simulation", "train", "inference"],
-        )
-
-        super().__init__(queue, resource_counter)
+        """
+        Parameters
+        ----------
+        queue:
+            Queue used to communicate with the task server
+        result_dir:
+            Directory in which to store outputs
+        input_pdb_dir:
+            Directory holding initial starting structures
+        num_workers:
+            Number of workers available for executing simulations, training, and inference tasks
+        done_callbacks:
+            Callbacks that can trigger a run to end
+        """
+        super().__init__(queue)
 
         result_dir.mkdir(exist_ok=True)
         self.result_dir = result_dir
         self.input_pdb_dir = input_pdb_dir
+        self.num_workers = num_workers
 
         # Number of times a given task has been submitted
         self.task_counter = defaultdict(int)
@@ -176,22 +181,12 @@ class DeepDriveMDWorkflow(BaseThinker):
         self.simulation_input_queue: Queue[SimulationFromRestart] = Queue()
         self.simulation_govenor = Semaphore()
 
-        # Allocate resources to each task type
-        self.rec.reallocate(None, "simulation", simulation_workers)
-        self.rec.reallocate(None, "train", train_workers)
-        self.rec.reallocate(None, "inference", inference_workers)
-
     def log_result(self, result: Result, topic: str) -> None:
         """Write a JSON result per line of the output file."""
         with open(self.result_dir / f"{topic}.json", "a") as f:
             print(result.json(exclude={"inputs", "value"}), file=f)
 
     def submit_task(self, inputs: BaseSettings, topic: str) -> None:
-        # TODO: If we uncomment this line, the program gets stuck after
-        # the first batch of simulations finish. It can be fixed if
-        # we remove the +5 buffer when submitting the initial batch
-        # of simulations.
-        self.rec.acquire(topic, 1, cancel_if=self.done)
         self.queues.send_inputs(
             inputs, method=f"run_{topic}", topic=topic, keep_inputs=False
         )
@@ -209,6 +204,7 @@ class DeepDriveMDWorkflow(BaseThinker):
 
     @agent(startup=True)
     def start_simulations(self) -> None:
+        """Launch a first batch of simulations"""
 
         # TODO: We could generalize this further by simply passing a list of
         # simulation input directories for which the simlulation app is
@@ -221,13 +217,11 @@ class DeepDriveMDWorkflow(BaseThinker):
         # PDB file, which is parsed below.
         initial_pdbs = itertools.cycle(self.input_pdb_dir.glob("**/*.pdb"))
 
-        simulation_workers = self.rec.allocated_slots("simulation")
-
         # Submit initial batch of simulations to workers (Add a buffer to increase utilization)
         # We cycle around the input PDBs, for instance if there is only a single PDB file,
         # we start all the tasks using it. If there are two input PDBs, we alternate them
         # between task submissions.
-        for _ in range(simulation_workers):
+        for _ in range(self.num_workers):
             # TODO: Clean up this API so that it works for a generalized simulation engine
             simulation_start = SimulationFromPDB(pdb_file=next(initial_pdbs))
             inputs = MDSimulationInput(simulation_start=simulation_start)
@@ -235,7 +229,6 @@ class DeepDriveMDWorkflow(BaseThinker):
 
     @result_processor(topic="simulation")
     def process_simulation_result(self, result: Result) -> None:
-        self.rec.release("simulation", 1)
         # Log simulation job results
         self.log_result(result, "simulation")
         if not result.success:
@@ -272,7 +265,6 @@ class DeepDriveMDWorkflow(BaseThinker):
 
     @result_processor(topic="train")
     def process_train_result(self, result: Result) -> None:
-        self.rec.release("train", 1)
         self.log_result(result, "train")
         if not result.success:
             return self.logger.warning("Bad train result")
@@ -282,7 +274,6 @@ class DeepDriveMDWorkflow(BaseThinker):
 
     @result_processor(topic="inference")
     def process_inference_result(self, result: Result) -> None:
-        self.rec.release("inference", 1)
         self.log_result(result, "inference")
         if not result.success:
             return self.logger.warning("Bad inference result")

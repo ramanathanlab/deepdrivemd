@@ -1,7 +1,7 @@
-git+https://github.com/exalearn/parsl.git@spawn
+parsl==2022.12.5
 pydantic==1.10.2
 pyyaml==6.0
-colmena==0.3.4
+colmena==0.4.0
 MDAnalysis==2.3.0
 mdlearn==0.0.10a1
 scikit-learn==1.1.3
