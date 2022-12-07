@@ -173,13 +173,9 @@ if __name__ == "__main__":
 
     # Define the worker configuration
     parsl_config = create_local_configuration(cfg.run_dir / "run-info")
-    default_executors = ["htex"]
 
     doer = ParslTaskServer(
-        [run_simulation, run_train, run_inference],
-        server_queues,
-        parsl_config,
-        default_executors=default_executors,
+        [run_simulation, run_train, run_inference], server_queues, parsl_config
     )
 
     thinker = DeepDriveMD_OpenMM_CVAE(
