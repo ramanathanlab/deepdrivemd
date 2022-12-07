@@ -344,5 +344,5 @@ class DeepDriveMDWorkflow(BaseThinker):
 
     @abstractmethod
     def handle_inference_output(self, output: BaseSettings) -> None:
-        """Use the output from a training run to update the list of available simulations"""
+        """Use the output from an inference run to update the list of available simulations"""
         ...
