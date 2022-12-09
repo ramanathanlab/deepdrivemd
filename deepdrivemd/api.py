@@ -7,12 +7,12 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from threading import Semaphore
+from threading import Semaphore, Event
 from typing import Any, Dict, List
 
 from colmena.models import Result
 from colmena.queue import ColmenaQueues
-from colmena.thinker import BaseThinker, agent, result_processor
+from colmena.thinker import BaseThinker, agent, result_processor, event_responder
 from pydantic import root_validator
 
 from deepdrivemd.applications.openmm_simulation import (
@@ -172,6 +172,9 @@ class DeepDriveMDWorkflow(BaseThinker):
         self.input_pdb_dir = input_pdb_dir
         self.num_workers = num_workers
 
+        # Keep track of the workflow state
+        self.simulations_completed = 0
+
         # Number of times a given task has been submitted
         self.task_counter = defaultdict(int)
         self.done_callbacks = done_callbacks
@@ -179,6 +182,8 @@ class DeepDriveMDWorkflow(BaseThinker):
         # Communicate information between agents
         self.simulation_input_queue: Queue[SimulationFromRestart] = Queue()
         self.simulation_govenor = Semaphore()
+        self.run_training = Event()
+        self.run_inference = Event()
 
     def log_result(self, result: Result, topic: str) -> None:
         """Write a JSON result per line of the output file."""
@@ -227,15 +232,22 @@ class DeepDriveMDWorkflow(BaseThinker):
 
     @result_processor(topic="simulation")
     def process_simulation_result(self, result: Result) -> None:
+        """Receive a training result and then submit new tasks
+
+        Will always submit a new simulation tasks and an inference or training
+        if the :meth:`handle_simulation_output` sets the appropriate flags."""
         # Log simulation job results
         self.log_result(result, "simulation")
         if not result.success:
-            return self.logger.warning("Bad simulation result")
+            return self.logger.warning("Bad simulation result")  # TODO (wardlt): Should we submit a new simulation if one fails?
+        self.simulations_completed += 1
+
         # This function is running an implicit while-true loop
         # we need to break out if the done flag has been sent,
         # otherwise it will submit a new simulation.
         if self.done.is_set():
             return
+
         # Select a method to start another simulation. If AI inference
         # is currently adding new restart points to the queue, we block
         # until it has finished so we can use the latest information.
@@ -256,39 +268,80 @@ class DeepDriveMDWorkflow(BaseThinker):
         output: BaseSettings = result.value
 
         # Result should be used to train the model and infer new restart points
-        self.train(output)
-        self.inference(output)
+        self.handle_simulation_output(output)
 
-    @result_processor(topic="train")
-    def process_train_result(self, result: Result) -> None:
+    @event_responder(event_name="run_training")  # TODO (wardlt): We can have this event_responder allocate resources away from simulation if desired.
+    def perform_training(self) -> None:
+        self.logger.info('Started training process')
+
+        # Send in a training task
+        self.train()
+
+        # Wait for the result to complete
+        result = self.queues.get_result(topic='train')
+        self.logger.info('Received training result')
+
         self.log_result(result, "train")
         if not result.success:
             return self.logger.warning("Bad train result")
 
+        # Process the training output
         output: BaseSettings = result.value
         self.handle_train_output(output)
+        self.logger.info('Training process is complete')
 
-    @result_processor(topic="inference")
-    def process_inference_result(self, result: Result) -> None:
+    @event_responder(event_name="run_inference")  # TODO (wardlt): We can have this event_responder allocate resources away from simulation if desired.
+    def perform_inference(self) -> None:
+        self.logger.info('Started inference process')
+
+        # Send in an inference task
+        self.inference()
+
+        # Wait for the result to complete
+        result = self.queues.get_result(topic='inference')
+        self.logger.info('Received inference result')
+
         self.log_result(result, "inference")
         if not result.success:
             return self.logger.warning("Bad inference result")
 
         output: BaseSettings = result.value
         self.handle_inference_output(output)
+        self.logger.info('Inference process is complete')
 
     @abstractmethod
-    def train(self, output: BaseSettings) -> None:
+    def train(self) -> None:
+        """Start a training task.
+
+        Must call :meth:`submit_task` with ``topic='train'``"""
         ...
 
     @abstractmethod
-    def inference(self, output: BaseSettings) -> None:
+    def inference(self) -> None:
+        """Start an inference task
+
+        Must call a :meth:`submit_task` with ``topic='infer'``"""
+        ...
+
+    @abstractmethod
+    def handle_simulation_output(self, result: BaseSettings):
+        """Stores a simulation result in the training set and define new inference tasks
+
+        Should call ``self.run_training.set()``
+
+        Parameters
+        ----------
+        result:
+            Result to be processed
+        """
         ...
 
     @abstractmethod
     def handle_train_output(self, output: BaseSettings) -> None:
+        """Use the output from a training run to update the model"""
         ...
 
     @abstractmethod
     def handle_inference_output(self, output: BaseSettings) -> None:
+        """Use the output from an inference run to update the list of available simulations"""
         ...
