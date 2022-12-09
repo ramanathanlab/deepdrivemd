@@ -3,8 +3,8 @@ from typing import List, Optional
 
 from deepdrivemd.config import (
     ApplicationSettings,
-    BatchSettings,
     BaseSettings,
+    BatchSettings,
     path_validator,
 )
 
