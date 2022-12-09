@@ -2,6 +2,7 @@
 variational autoencoder for adaptive control."""
 import functools
 import logging
+import time
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -40,10 +41,6 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
     ) -> None:
         super().__init__(**kwargs)
 
-        # Make sure there is at most one training and inference task running at a time
-        self.running_train = False
-        self.running_inference = False
-
         # Make sure there has been at least one training task complete before running inference
         self.model_weights_available: bool = False
 
@@ -57,46 +54,35 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
             contact_map_paths=[], rmsd_paths=[], model_weight_path=Path()
         )
 
-    def train(self, output: MDSimulationOutput) -> None:
+    def handle_simulation_output(self, output: MDSimulationOutput) -> None:
         # Collect simulation results
-        self.train_input.contact_map_paths.append(output.contact_map_path)
-        self.train_input.rmsd_paths.append(output.rmsd_path)
-        # If a training run is already going, then exit
-        if self.running_train:
-            return
-        # Train model if enough data is available
+        self.train_input.append(output.contact_map_path, output.rmsd_path)
+        self.inference_input.append(output.contact_map_path, output.rmsd_path)
+
         if len(self.train_input.rmsd_paths) >= self.simulations_per_train:
-            self.running_train = True
-            self.submit_task(self.train_input, "train")
-            # Clear batched data
-            self.train_input.contact_map_paths = []
-            self.train_input.rmsd_paths = []
-
-    def inference(self, output: MDSimulationOutput) -> None:
-        # Collect simulation results
-        self.inference_input.contact_map_paths.append(output.contact_map_path)
-        self.inference_input.rmsd_paths.append(output.rmsd_path)
-
-        # Run inference if enough data is available and at least
-        # one round of training has finished.
-        if self.running_inference or not self.model_weights_available:
-            return
+            self.run_training.set()
 
         if len(self.inference_input.rmsd_paths) >= self.simulations_per_inference:
-            self.running_inference = True
-            self.submit_task(self.inference_input, "inference")
-            # Clear batched data
-            self.inference_input.contact_map_paths = []
-            self.inference_input.rmsd_paths = []
+            self.run_inference.set()
+
+    def train(self) -> None:
+        self.submit_task(self.train_input, "train")
+        self.train_input.clear()  # Clear batched data
+
+    def inference(self) -> None:
+        # Inference must wait for a trained model to be available
+        while not self.model_weights_available:
+            time.sleep(1)
+
+        self.submit_task(self.inference_input, "inference")
+        self.inference_input.clear()  # Clear batched data
 
     def handle_train_output(self, output: CVAETrainOutput) -> None:
-        self.running_train = False
         self.inference_input.model_weight_path = output.model_weight_path
         self.model_weights_available = True
         self.logger.info(f"Updated model_weight_path to: {output.model_weight_path}")
 
     def handle_inference_output(self, output: CVAEInferenceOutput) -> None:
-        self.running_inference = False
         # Add restart points to simulation input queue while holding the lock
         # so that the simulations see the latest information. Note that
         # the output restart values should be sorted such that the first

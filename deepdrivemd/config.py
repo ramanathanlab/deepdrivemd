@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Optional, Type, TypeVar, Union
+from typing import Optional, Type, TypeVar, Union, List, Tuple, Any
 
 import yaml
 from pydantic import BaseSettings as _BaseSettings
@@ -38,6 +38,23 @@ class BaseSettings(_BaseSettings):
         with open(filename) as fp:
             raw_data = yaml.safe_load(fp)
         return cls(**raw_data)
+
+
+class BatchSettings(BaseSettings):
+    """A mixin for easily handling data classes
+    representing data batches with multiple lists."""
+
+    @property
+    def lists(self) -> List[List[Any]]:
+        return [field for field in self.__dict__.values() if isinstance(field, list)]
+
+    def append(self, *args: Any) -> None:
+        for arg, _list in zip(args, self.lists):
+            _list.append(arg)
+
+    def clear(self) -> None:
+        for _list in self.lists:
+            _list.clear()
 
 
 class ApplicationSettings(BaseSettings):

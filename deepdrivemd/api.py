@@ -239,7 +239,9 @@ class DeepDriveMDWorkflow(BaseThinker):
         # Log simulation job results
         self.log_result(result, "simulation")
         if not result.success:
-            return self.logger.warning("Bad simulation result")  # TODO (wardlt): Should we submit a new simulation if one fails?
+            # TODO (wardlt): Should we submit a new simulation if one fails?
+            # (braceal): Yes, I think so.
+            return self.logger.warning("Bad simulation result")
         self.simulations_completed += 1
 
         # This function is running an implicit while-true loop
@@ -270,16 +272,18 @@ class DeepDriveMDWorkflow(BaseThinker):
         # Result should be used to train the model and infer new restart points
         self.handle_simulation_output(output)
 
-    @event_responder(event_name="run_training")  # TODO (wardlt): We can have this event_responder allocate resources away from simulation if desired.
+    @event_responder(
+        event_name="run_training"
+    )  # TODO (wardlt): We can have this event_responder allocate resources away from simulation if desired.
     def perform_training(self) -> None:
-        self.logger.info('Started training process')
+        self.logger.info("Started training process")
 
         # Send in a training task
         self.train()
 
         # Wait for the result to complete
-        result = self.queues.get_result(topic='train')
-        self.logger.info('Received training result')
+        result: Result = self.queues.get_result(topic="train")
+        self.logger.info("Received training result")
 
         self.log_result(result, "train")
         if not result.success:
@@ -288,18 +292,19 @@ class DeepDriveMDWorkflow(BaseThinker):
         # Process the training output
         output: BaseSettings = result.value
         self.handle_train_output(output)
-        self.logger.info('Training process is complete')
+        self.logger.info("Training process is complete")
 
-    @event_responder(event_name="run_inference")  # TODO (wardlt): We can have this event_responder allocate resources away from simulation if desired.
+    # TODO (wardlt): We can have this event_responder allocate resources away from simulation if desired.
+    @event_responder(event_name="run_inference")
     def perform_inference(self) -> None:
-        self.logger.info('Started inference process')
+        self.logger.info("Started inference process")
 
         # Send in an inference task
         self.inference()
 
         # Wait for the result to complete
-        result = self.queues.get_result(topic='inference')
-        self.logger.info('Received inference result')
+        result: Result = self.queues.get_result(topic="inference")
+        self.logger.info("Received inference result")
 
         self.log_result(result, "inference")
         if not result.success:
@@ -307,7 +312,7 @@ class DeepDriveMDWorkflow(BaseThinker):
 
         output: BaseSettings = result.value
         self.handle_inference_output(output)
-        self.logger.info('Inference process is complete')
+        self.logger.info("Inference process is complete")
 
     @abstractmethod
     def train(self) -> None:
@@ -324,15 +329,15 @@ class DeepDriveMDWorkflow(BaseThinker):
         ...
 
     @abstractmethod
-    def handle_simulation_output(self, result: BaseSettings):
-        """Stores a simulation result in the training set and define new inference tasks
+    def handle_simulation_output(self, output: BaseSettings) -> None:
+        """Stores a simulation output in the training set and define new inference tasks
 
         Should call ``self.run_training.set()``
 
         Parameters
         ----------
-        result:
-            Result to be processed
+        output:
+            Output to be processed
         """
         ...
 
