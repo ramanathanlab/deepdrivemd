@@ -114,6 +114,8 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
 
 
 class ExperimentSettings(DeepDriveMDSettings):
+    """Provide a YAML interface to configure the experiment."""
+
     simulation_settings: MDSimulationSettings
     train_settings: CVAETrainSettings
     inference_settings: CVAEInferenceSettings
