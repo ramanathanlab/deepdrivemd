@@ -1,6 +1,6 @@
 """Utilities to build Parsl configurations."""
 from abc import ABC, abstractmethod
-from typing import Literal, Tuple, Union
+from typing import Literal, Sequence, Tuple, Union
 
 from parsl.config import Config
 from parsl.executors import HighThroughputExecutor
@@ -59,7 +59,7 @@ class LocalSettings(BaseComputeSettings):
 class WorkstationSettings(BaseComputeSettings):
     name: Literal["workstation"] = "workstation"
     """Name of the platform."""
-    available_accelerators: int = 8
+    available_accelerators: Union[int, Sequence[str]] = 8
     """Number of GPU accelerators to use."""
     worker_port_range: Tuple[int, int] = (10000, 20000)
     """Port range."""
