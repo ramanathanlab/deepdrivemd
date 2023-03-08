@@ -5,5 +5,5 @@ colmena==0.4.0
 MDAnalysis==2.3.0
 mdlearn==0.0.10a1
 scikit-learn==1.1.3
-torch==1.13.0
+torch>=1.13.1
 natsort==8.2.0

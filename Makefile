@@ -42,7 +42,11 @@ coverage:
 
 .PHONY: pygount
 make pygount:
-	pygount --format=summary deepdrivemd
+	pygount --format=summary $(package_name)
+
+.PHONY: radon
+make radon:
+	radon cc $(package_name) -a
 
 .PHONY: all
 all: format lint #mypy
