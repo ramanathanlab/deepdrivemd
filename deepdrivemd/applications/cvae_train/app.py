@@ -46,15 +46,14 @@ class CVAETrainApplication(Application):
         rmsds = np.concatenate([np.load(p) for p in input_data.rmsd_paths])
 
         # Train model
-        self.trainer.fit(
-            X=contact_maps, scalars={"rmsd": rmsds}, output_path=self.workdir
-        )
+        model_dir = self.workdir / "model"  # Need to create new directory
+        self.trainer.fit(X=contact_maps, scalars={"rmsd": rmsds}, output_path=model_dir)
 
         # Log the loss
-        pd.DataFrame(self.trainer.loss_curve_).to_csv(self.workdir / "loss.csv")
+        pd.DataFrame(self.trainer.loss_curve_).to_csv(model_dir / "loss.csv")
 
         # Get the most recent model checkpoint
-        checkpoint_dir = self.workdir / "checkpoints"
+        checkpoint_dir = model_dir / "checkpoints"
         model_weight_path = natsorted(list(checkpoint_dir.glob("*.pt")))[-1]
         # Adjust the path to the persistent path if using node local storage.
         model_weight_path = self.persistent_dir / "checkpoints" / model_weight_path.name

@@ -7,12 +7,12 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from threading import Semaphore, Event
+from threading import Event, Semaphore
 from typing import Any, Dict, List
 
 from colmena.models import Result
 from colmena.queue import ColmenaQueues
-from colmena.thinker import BaseThinker, agent, result_processor, event_responder
+from colmena.thinker import BaseThinker, agent, event_responder, result_processor
 from pydantic import root_validator
 
 from deepdrivemd.applications.openmm_simulation import (

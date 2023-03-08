@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Optional, Type, TypeVar, Union, List, Tuple, Any
+from typing import Any, List, Optional, Type, TypeVar, Union
 
 import yaml
 from pydantic import BaseSettings as _BaseSettings
