@@ -80,6 +80,8 @@ class CVAEInferenceApplication(Application):
             .sort_values("rmsd")  # Finally, sort the smallest lof scores by rmsd
         )
 
+        df.to_csv(self.workdir / "outliers.csv")
+
         # Map each of the selections back to the correct simulation file and frame
         return CVAEInferenceOutput(
             sim_dirs=list(map(Path, df.sim_dirs)), sim_frames=list(df.sim_frames)
