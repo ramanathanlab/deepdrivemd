@@ -35,7 +35,7 @@ class CVAEInferenceApplication(Application):
     def run(self, input_data: CVAEInferenceInput) -> CVAEInferenceOutput:
         # Load data
         contact_maps = np.concatenate(
-            [np.load(p) for p in input_data.contact_map_paths]
+            [np.load(p, allow_pickle=True) for p in input_data.contact_map_paths]
         )
         _rmsds = [np.load(p) for p in input_data.rmsd_paths]
         rmsds = np.concatenate(_rmsds)

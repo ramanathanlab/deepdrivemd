@@ -281,7 +281,9 @@ class MDSimulationApplication(Application):
     def init_continue_simulation(self, simulation_start: ContinueSimulation) -> None:
         # Use cached values
         if self.sim is None:
-            raise RuntimeError("Tried to continue a simulation that doesn't exist.")
+            raise RuntimeError(
+                f"Tried to continue a simulation that doesn't exist. {vars(self)}"
+            )
         assert self.pdb_file is not None
         # TODO: If we are using node_local_storage, then the self.pdb_file will not be found
         # since it will have been moved back to persistent storage.
@@ -341,7 +343,7 @@ class MDSimulationApplication(Application):
         self.sim.reporters.append(app.DCDReporter(traj_file, report_steps))
         self.sim.reporters.append(
             app.StateDataReporter(
-                self.workdir / "sim.log",
+                str(self.workdir / "sim.log"),
                 report_steps,
                 step=True,
                 time=True,

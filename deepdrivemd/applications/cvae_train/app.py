@@ -41,7 +41,7 @@ class CVAETrainApplication(Application):
     def run(self, input_data: CVAETrainInput) -> CVAETrainOutput:
         # Load data
         contact_maps = np.concatenate(
-            [np.load(p) for p in input_data.contact_map_paths]
+            [np.load(p, allow_pickle=True) for p in input_data.contact_map_paths]
         )
         rmsds = np.concatenate([np.load(p) for p in input_data.rmsd_paths])
 
@@ -56,7 +56,9 @@ class CVAETrainApplication(Application):
         checkpoint_dir = model_dir / "checkpoints"
         model_weight_path = natsorted(list(checkpoint_dir.glob("*.pt")))[-1]
         # Adjust the path to the persistent path if using node local storage.
-        model_weight_path = self.persistent_dir / "checkpoints" / model_weight_path.name
+        model_weight_path = (
+            self.persistent_dir / "model" / "checkpoints" / model_weight_path.name
+        )
         return CVAETrainOutput(model_weight_path=model_weight_path)
 
 
