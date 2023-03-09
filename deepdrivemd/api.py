@@ -15,12 +15,7 @@ from colmena.queue import ColmenaQueues
 from colmena.thinker import BaseThinker, agent, event_responder, result_processor
 from pydantic import root_validator
 
-from deepdrivemd.applications.openmm_simulation import (
-    ContinueSimulation,
-    MDSimulationInput,
-    SimulationFromPDB,
-    SimulationFromRestart,
-)
+from deepdrivemd.applications.openmm_simulation import MDSimulationInput
 from deepdrivemd.config import ApplicationSettings, BaseSettings, path_validator
 
 
@@ -35,8 +30,10 @@ class DeepDriveMDSettings(BaseSettings):
     """Address at which the redis server can be reached."""
     redisport: int = 6379
     """Port on which redis is available."""
-    input_pdb_dir: Path
-    """Nested PDB input directory, e.g. pdb_dir/system1/system1.pdb, pdb_dir/system2/system2.pdb."""
+    simulation_input_dir: Path
+    """Nested directory storing initial simulation start files,
+    e.g. pdb_dir/system1/, pdb_dir/system2/, ..., where system<i> might store
+    PDB files, topology files, etc needed to start the simulation application."""
     num_total_simulations: int
     """Number of simulations before signalling to stop (more simulations may be run)."""
     duration_sec: float = float("inf")
@@ -80,7 +77,7 @@ class DeepDriveMDSettings(BaseSettings):
         return values
 
     # validators
-    _input_pdb_dir_exists = path_validator("input_pdb_dir")
+    _simulation_input_dir_exists = path_validator("simulation_input_dir")
 
 
 class DoneCallback(ABC):
@@ -145,7 +142,7 @@ class DeepDriveMDWorkflow(BaseThinker):
         self,
         queue: ColmenaQueues,
         result_dir: Path,
-        input_pdb_dir: Path,
+        simulation_input_dir: Path,
         num_workers: int,
         done_callbacks: List[DoneCallback],
     ) -> None:
@@ -156,8 +153,8 @@ class DeepDriveMDWorkflow(BaseThinker):
             Queue used to communicate with the task server
         result_dir:
             Directory in which to store outputs
-        input_pdb_dir:
-            Directory holding initial starting structures
+        simulation_input_dir:
+            Directory with subdirectories each storing initial simulation start files.
         num_workers:
             Number of workers available for executing simulations, training,
             and inference tasks. One worker is reserved for each training
@@ -169,8 +166,12 @@ class DeepDriveMDWorkflow(BaseThinker):
 
         result_dir.mkdir(exist_ok=True)
         self.result_dir = result_dir
-        self.input_pdb_dir = input_pdb_dir
         self.num_workers = num_workers
+
+        # Collect initial simulation directories, assumes they are in nested subdirectories
+        self.simulation_input_dirs = itertools.cycle(
+            filter(lambda p: p.is_dir(), simulation_input_dir.glob("*"))
+        )
 
         # Keep track of the workflow state
         self.simulations_completed = 0
@@ -180,7 +181,7 @@ class DeepDriveMDWorkflow(BaseThinker):
         self.done_callbacks = done_callbacks
 
         # Communicate information between agents
-        self.simulation_input_queue: Queue[SimulationFromRestart] = Queue()
+        self.simulation_input_queue: Queue[MDSimulationInput] = Queue()
         self.simulation_govenor = Semaphore()
         self.run_training = Event()
         self.run_inference = Event()
@@ -209,25 +210,11 @@ class DeepDriveMDWorkflow(BaseThinker):
     @agent(startup=True)
     def start_simulations(self) -> None:
         """Launch a first batch of simulations"""
-
-        # TODO: We could generalize this further by simply passing a list of
-        # simulation input directories for which the simlulation app is
-        # responsible for parsing files from. This would help to support
-        # simulation engines that don't use pdb files as input.
-
-        # Collect initial PDB files, assumes they are in nested subdirectories,
-        # e.g., pdb_dir/system1/system1.pdb, pdb_dir/system2/system2.pdb.
-        # This allows us to put topology files in the same subdirectory as the
-        # PDB file, which is parsed below.
-        initial_pdbs = itertools.cycle(self.input_pdb_dir.glob("**/*.pdb"))
-
-        # We cycle around the input PDBs, for instance if there is only a single PDB file,
-        # we start all the tasks using it. If there are two input PDBs, we alternate them
-        # between task submissions.
+        # We cycle around the input directories for instance if there is only a single directory,
+        # we start all the tasks using it. If there are two input directories, we alternate them
+        # between task submissions. Saving two workers for training and inference.
         for _ in range(self.num_workers - 2):
-            # TODO: Clean up this API so that it works for a generalized simulation engine
-            simulation_start = SimulationFromPDB(pdb_file=next(initial_pdbs))
-            inputs = MDSimulationInput(simulation_start=simulation_start)
+            inputs = MDSimulationInput(sim_dir=next(self.simulation_input_dirs))
             self.submit_task(inputs, "simulation")
 
     @result_processor(topic="simulation")
@@ -256,14 +243,13 @@ class DeepDriveMDWorkflow(BaseThinker):
         with self.simulation_govenor:
             if not self.simulation_input_queue.empty():
                 # If the AI inference has selected restart points, use those
-                simulation_start = self.simulation_input_queue.get()
+                inputs = self.simulation_input_queue.get()
             else:
-                # Otherwise, continue an existing simulation
-                simulation_start = ContinueSimulation()
+                # Otherwise, restart an initial simulation
+                inputs = MDSimulationInput(sim_dir=next(self.simulation_input_dirs))
 
         # Submit another simulation as soon as the previous one finishes
         # to keep utilization high
-        inputs = MDSimulationInput(simulation_start=simulation_start)
         self.submit_task(inputs, "simulation")
 
         # Parse simulation output values
@@ -272,9 +258,8 @@ class DeepDriveMDWorkflow(BaseThinker):
         # Result should be used to train the model and infer new restart points
         self.handle_simulation_output(output)
 
-    @event_responder(
-        event_name="run_training"
-    )  # TODO (wardlt): We can have this event_responder allocate resources away from simulation if desired.
+    # TODO (wardlt): We can have this event_responder allocate resources away from simulation if desired.
+    @event_responder(event_name="run_training")
     def perform_training(self) -> None:
         self.logger.info("Started training process")
 

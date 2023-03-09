@@ -1,4 +1,4 @@
-input_pdb_dir: data/1fme/system
+simulation_input_dir: data/1fme
 num_workers: 4
 simulations_per_train: 2
 simulations_per_inference: 2

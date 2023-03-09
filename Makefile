@@ -49,4 +49,4 @@ radon:
 	radon cc $(package_name) -a
 
 .PHONY: all
-all: format lint #mypy
+all: format lint # mypy

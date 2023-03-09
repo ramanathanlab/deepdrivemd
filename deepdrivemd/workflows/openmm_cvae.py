@@ -27,9 +27,9 @@ from deepdrivemd.applications.cvae_train import (
     CVAETrainSettings,
 )
 from deepdrivemd.applications.openmm_simulation import (
+    MDSimulationInput,
     MDSimulationOutput,
     MDSimulationSettings,
-    SimulationFromRestart,
 )
 from deepdrivemd.parsl import ComputeSettingsTypes
 from deepdrivemd.utils import application, register_application
@@ -90,7 +90,7 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
         with self.simulation_govenor:
             for sim_dir, sim_frame in zip(output.sim_dirs, output.sim_frames):
                 self.simulation_input_queue.put(
-                    SimulationFromRestart(sim_dir=sim_dir, sim_frame=sim_frame)
+                    MDSimulationInput(sim_dir=sim_dir, sim_frame=sim_frame)
                 )
 
         self.logger.info(
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     thinker = DeepDriveMD_OpenMM_CVAE(
         queue=queues,
         result_dir=cfg.run_dir / "result",
-        input_pdb_dir=cfg.input_pdb_dir,
+        simulation_input_dir=cfg.simulation_input_dir,
         num_workers=cfg.num_workers,
         simulations_per_train=cfg.simulations_per_train,
         simulations_per_inference=cfg.simulations_per_inference,
