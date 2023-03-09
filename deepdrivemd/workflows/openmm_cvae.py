@@ -1,4 +1,4 @@
-"""DeepDriveMD using OpenMM for simulation and a convolutational
+"""DeepDriveMD using OpenMM for simulation and a convolutional
 variational autoencoder for adaptive control."""
 import functools
 import logging
