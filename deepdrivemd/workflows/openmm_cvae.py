@@ -6,7 +6,7 @@ import time
 from argparse import ArgumentParser
 from pathlib import Path
 
-import proxystore as ps
+import proxystore
 from colmena.queue.python import PipeQueues
 from colmena.task_server import ParslTaskServer
 
@@ -120,7 +120,7 @@ if __name__ == "__main__":
     cfg.configure_logging()
 
     # Make the proxy store
-    ps_store = ps.store.init_store(
+    ps_store = proxystore.store.get_store(
         store_type="file", name="file", store_dir=str(cfg.run_dir / "proxy-store")
     )
 
