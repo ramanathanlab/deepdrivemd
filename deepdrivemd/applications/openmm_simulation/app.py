@@ -171,14 +171,14 @@ def configure_simulation(
     """
     # Configure hardware
     try:
-        platform = openmm.Platform_getPlatformByName("CUDA")
+        platform = openmm.Platform.getPlatformByName("CUDA")
         platform_properties = {"DeviceIndex": str(gpu_index), "CudaPrecision": "mixed"}
     except Exception:
         try:
-            platform = openmm.Platform_getPlatformByName("OpenCL")
+            platform = openmm.Platform.getPlatformByName("OpenCL")
             platform_properties = {"DeviceIndex": str(gpu_index)}
         except Exception:
-            platform = openmm.Platform_getPlatformByName("CPU")
+            platform = openmm.Platform.getPlatformByName("CPU")
             platform_properties = {}
 
     # Select implicit or explicit solvent configuration
