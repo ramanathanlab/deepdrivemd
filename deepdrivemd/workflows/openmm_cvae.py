@@ -15,6 +15,7 @@ from deepdrivemd.api import (
     DeepDriveMDSettings,
     DeepDriveMDWorkflow,
     InferenceCountDoneCallback,
+    SimulationCountDoneCallback,
     TimeoutDoneCallback,
 )
 from deepdrivemd.applications.cvae_inference import (
@@ -174,8 +175,8 @@ if __name__ == "__main__":
         simulations_per_train=cfg.simulations_per_train,
         simulations_per_inference=cfg.simulations_per_inference,
         done_callbacks=[
-            InferenceCountDoneCallback(2),  # Testing
-            # SimulationCountDoneCallback(cfg.num_total_simulations),
+            # InferenceCountDoneCallback(2),  # Testing
+            SimulationCountDoneCallback(cfg.num_total_simulations),
             TimeoutDoneCallback(cfg.duration_sec),
         ],
     )
