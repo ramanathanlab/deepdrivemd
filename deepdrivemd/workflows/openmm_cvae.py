@@ -8,6 +8,7 @@ from pathlib import Path
 
 from colmena.queue.python import PipeQueues
 from colmena.task_server import ParslTaskServer
+from proxystore.store import register_store
 from proxystore.store.file import FileStore
 
 from deepdrivemd.api import (
@@ -120,7 +121,8 @@ if __name__ == "__main__":
     cfg.configure_logging()
 
     # Make the proxy store
-    ps_store = FileStore(name="file", store_dir=str(cfg.run_dir / "proxy-store"))
+    store = FileStore(name="file", store_dir=str(cfg.run_dir / "proxy-store"))
+    register_store(store)
 
     # Make the queues
     queues = PipeQueues(
@@ -195,4 +197,4 @@ if __name__ == "__main__":
     doer.join()
 
     # Clean up proxy store
-    ps_store.close()
+    store.close()
