@@ -323,6 +323,8 @@ class MDSimulationApplication(Application):
         np.save(self.workdir / "contact_map.npy", contact_maps)
         np.save(self.workdir / "rmsd.npy", rmsds)
 
+        del sim
+
         # Return simulation analysis outputs
         return MDSimulationOutput(
             contact_map_path=self.persistent_dir / "contact_map.npy",
