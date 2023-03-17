@@ -62,7 +62,7 @@ ls runs/experiment-170323-091525/simulation/run-08843adb-65e1-47f0-b0f8-34821aa4
 ```
 - `1FME-unfolded.pdb` the PDB file used to start the simulation
 - `contact_map.npy`, `rmsd.npy`: the preprocessed data files which will be input into the train and inference tasks
-- `input.yaml`, `output.yaml`: These simply log the task function input and return values, they are helpful for debugging but not strtictly necessary
+- `input.yaml`, `output.yaml`: These simply log the task function input and return values, they are helpful for debugging but are not strtictly necessary
 - `sim.dcd`: the simulation trajectory file containing all the coordinate frames
 - `sim.log`: a simulation log detailing the energy, steps taken, ns/day, etc
 
