@@ -1,7 +1,4 @@
-import logging
-import time
 from pathlib import Path
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -9,30 +6,22 @@ import torch
 from mdlearn.nn.models.vae.symmetric_conv2d_vae import SymmetricConv2dVAETrainer
 from sklearn.neighbors import LocalOutlierFactor
 
-from deepdrivemd.applications.cvae_inference import (
+from deepdrivemd.api import Application
+from deepdrivemd.apps.cvae_inference import (
     CVAEInferenceInput,
     CVAEInferenceOutput,
     CVAEInferenceSettings,
 )
-from deepdrivemd.applications.cvae_train import CVAESettings
-from deepdrivemd.utils import Application, parse_application_args
-
-logger = logging.getLogger(__name__)
-
-PathLike = Union[str, Path]
+from deepdrivemd.apps.cvae_train import CVAESettings
 
 
 class CVAEInferenceApplication(Application):
     config: CVAEInferenceSettings
 
-    def __init__(self, config: CVAEInferenceSettings) -> None:
-        super().__init__(config)
-
-        # Initialize the model
-        cvae_settings = CVAESettings.from_yaml(self.config.cvae_settings_yaml).dict()
-        self.trainer = SymmetricConv2dVAETrainer(**cvae_settings)
-
     def run(self, input_data: CVAEInferenceInput) -> CVAEInferenceOutput:
+        # Log the input data
+        input_data.dump_yaml(self.workdir / "input.yaml")
+
         # Load data
         contact_maps = np.concatenate(
             [np.load(p, allow_pickle=True) for p in input_data.contact_map_paths]
@@ -46,14 +35,18 @@ class CVAEInferenceApplication(Application):
         )
         assert len(rmsds) == len(sim_frames) == len(sim_dirs)
 
+        # Initialize the model
+        cvae_settings = CVAESettings.from_yaml(self.config.cvae_settings_yaml).dict()
+        trainer = SymmetricConv2dVAETrainer(**cvae_settings)
+
         # Load model weights to use for inference
         checkpoint = torch.load(
-            input_data.model_weight_path, map_location=self.trainer.device
+            input_data.model_weight_path, map_location=trainer.device
         )
-        self.trainer.model.load_state_dict(checkpoint["model_state_dict"])
+        trainer.model.load_state_dict(checkpoint["model_state_dict"])
 
         # Generate latent embeddings in inference mode
-        embeddings, *_ = self.trainer.predict(
+        embeddings, *_ = trainer.predict(
             X=contact_maps, inference_batch_size=self.config.inference_batch_size
         )
         np.save(self.workdir / "embeddings.npy", embeddings)
@@ -86,27 +79,3 @@ class CVAEInferenceApplication(Application):
         return CVAEInferenceOutput(
             sim_dirs=list(map(Path, df.sim_dirs)), sim_frames=list(df.sim_frames)
         )
-
-
-class MockCVAEInferenceApplication(Application):
-    config: CVAEInferenceSettings
-
-    def __init__(self, config: CVAEInferenceSettings) -> None:
-        super().__init__(config)
-        time.sleep(0.1)  # Emulate a large startup cost
-
-    def run(self, input_data: CVAEInferenceInput) -> CVAEInferenceOutput:
-        return CVAEInferenceOutput(
-            sim_dirs=[Path("/path/to/sim_dir")] * self.config.num_outliers,
-            sim_frames=[0] * self.config.num_outliers,
-        )
-
-
-if __name__ == "__main__":
-    args = parse_application_args()
-    config = CVAEInferenceSettings.from_yaml(args.config)
-    if args.test:
-        app = MockCVAEInferenceApplication(config)
-    else:
-        app = CVAEInferenceApplication(config)
-    app.start()

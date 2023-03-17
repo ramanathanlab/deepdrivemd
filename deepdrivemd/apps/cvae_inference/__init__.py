@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import List, Optional
 
-from deepdrivemd.config import (
+from deepdrivemd.api import (
     ApplicationSettings,
     BaseSettings,
     BatchSettings,

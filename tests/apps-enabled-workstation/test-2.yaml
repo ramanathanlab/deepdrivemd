@@ -1,8 +1,8 @@
 simulation_input_dir: data/1fme
 num_workers: 4
-simulations_per_train: 1
-simulations_per_inference: 2
-num_total_simulations: 4
+simulations_per_train: 2
+simulations_per_inference: 1
+num_total_simulations: 10
 
 compute_settings:
   name: workstation

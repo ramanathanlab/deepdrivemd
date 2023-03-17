@@ -6,7 +6,7 @@ from parsl.config import Config
 from parsl.executors import HighThroughputExecutor
 from parsl.providers import LocalProvider
 
-from deepdrivemd.config import BaseSettings, PathLike
+from deepdrivemd.api import BaseSettings, PathLike
 
 
 class BaseComputeSettings(BaseSettings, ABC):
@@ -33,7 +33,7 @@ class BaseComputeSettings(BaseSettings, ABC):
 
 
 class LocalSettings(BaseComputeSettings):
-    name: Literal["local"] = "local"
+    name: Literal["local"] = "local"  # type: ignore[assignment]
     max_workers: int = 1
     cores_per_worker: float = 0.0001
     worker_port_range: Tuple[int, int] = (10000, 20000)
@@ -50,21 +50,21 @@ class LocalSettings(BaseComputeSettings):
                     max_workers=self.max_workers,
                     cores_per_worker=self.cores_per_worker,
                     worker_port_range=self.worker_port_range,
-                    provider=LocalProvider(init_blocks=1, max_blocks=1),
+                    provider=LocalProvider(init_blocks=1, max_blocks=1),  # type: ignore[no-untyped-call]
                 ),
             ],
         )
 
 
 class WorkstationSettings(BaseComputeSettings):
-    name: Literal["workstation"] = "workstation"
+    name: Literal["workstation"] = "workstation"  # type: ignore[assignment]
     """Name of the platform."""
     available_accelerators: Union[int, Sequence[str]] = 8
     """Number of GPU accelerators to use."""
     worker_port_range: Tuple[int, int] = (10000, 20000)
     """Port range."""
-    label: str = "htex"
     retries: int = 1
+    label: str = "htex"
 
     def config_factory(self, run_dir: PathLike) -> Config:
         return Config(
@@ -77,7 +77,7 @@ class WorkstationSettings(BaseComputeSettings):
                     cpu_affinity="block",
                     available_accelerators=self.available_accelerators,
                     worker_port_range=self.worker_port_range,
-                    provider=LocalProvider(init_blocks=1, max_blocks=1),
+                    provider=LocalProvider(init_blocks=1, max_blocks=1),  # type: ignore[no-untyped-call]
                 ),
             ],
         )

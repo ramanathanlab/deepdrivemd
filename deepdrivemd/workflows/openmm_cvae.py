@@ -1,10 +1,12 @@
 """DeepDriveMD using OpenMM for simulation and a convolutional
 variational autoencoder for adaptive control."""
-import functools
 import logging
 import time
 from argparse import ArgumentParser
+from functools import partial, update_wrapper
 from pathlib import Path
+from queue import Queue
+from typing import Any
 
 from colmena.queue.python import PipeQueues
 from colmena.task_server import ParslTaskServer
@@ -17,28 +19,55 @@ from deepdrivemd.api import (  # InferenceCountDoneCallback,
     SimulationCountDoneCallback,
     TimeoutDoneCallback,
 )
-from deepdrivemd.applications.cvae_inference import (
+from deepdrivemd.apps.cvae_inference import (
     CVAEInferenceInput,
     CVAEInferenceOutput,
     CVAEInferenceSettings,
 )
-from deepdrivemd.applications.cvae_train import (
+from deepdrivemd.apps.cvae_train import (
     CVAETrainInput,
     CVAETrainOutput,
     CVAETrainSettings,
 )
-from deepdrivemd.applications.openmm_simulation import (
+from deepdrivemd.apps.openmm_simulation import (
     MDSimulationInput,
     MDSimulationOutput,
     MDSimulationSettings,
 )
 from deepdrivemd.parsl import ComputeSettingsTypes
-from deepdrivemd.utils import application, register_application
+
+
+def run_simulation(
+    input_data: MDSimulationInput, config: MDSimulationSettings
+) -> MDSimulationOutput:
+    from deepdrivemd.apps.openmm_simulation.app import MDSimulationApplication
+
+    app = MDSimulationApplication(config)
+    output_data = app.run(input_data)
+    return output_data
+
+
+def run_train(input_data: CVAETrainInput, config: CVAETrainSettings) -> CVAETrainOutput:
+    from deepdrivemd.apps.cvae_train.app import CVAETrainApplication
+
+    app = CVAETrainApplication(config)
+    output_data = app.run(input_data)
+    return output_data
+
+
+def run_inference(
+    input_data: CVAEInferenceInput, config: CVAEInferenceSettings
+) -> CVAEInferenceOutput:
+    from deepdrivemd.apps.cvae_inference.app import CVAEInferenceApplication
+
+    app = CVAEInferenceApplication(config)
+    output_data = app.run(input_data)
+    return output_data
 
 
 class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
     def __init__(
-        self, simulations_per_train: int, simulations_per_inference: int, **kwargs
+        self, simulations_per_train: int, simulations_per_inference: int, **kwargs: Any
     ) -> None:
         super().__init__(**kwargs)
 
@@ -55,28 +84,50 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
             contact_map_paths=[], rmsd_paths=[], model_weight_path=Path()
         )
 
-    def handle_simulation_output(self, output: MDSimulationOutput) -> None:
-        # Collect simulation results
-        self.train_input.append(output.contact_map_path, output.rmsd_path)
-        self.inference_input.append(output.contact_map_path, output.rmsd_path)
+        # Communicate results between agents
+        self.simulation_input_queue: Queue[MDSimulationInput] = Queue()
 
-        if len(self.train_input.rmsd_paths) >= self.simulations_per_train:
-            self.run_training.set()
+    def simulate(self) -> None:
+        """Select a method to start another simulation. If AI inference
+        is currently adding new restart points to the queue, we block
+        until it has finished so we can use the latest information.
 
-        if len(self.inference_input.rmsd_paths) >= self.simulations_per_inference:
-            self.run_inference.set()
+        In the first iteration, we simply cycle around the input directories.
+        """
+        with self.simulation_govenor:
+            if not self.simulation_input_queue.empty():
+                # If the AI inference has selected restart points, use those
+                inputs = self.simulation_input_queue.get()
+            else:
+                # Otherwise, start an initial simulation
+                inputs = MDSimulationInput(sim_dir=next(self.simulation_input_dirs))
+
+        self.submit_task("simulation", inputs)
 
     def train(self) -> None:
-        self.submit_task(self.train_input, "train")
-        self.train_input.clear()  # Clear batched data
+        self.submit_task("train", self.train_input)
+        # self.train_input.clear()  # Clear batched data
 
     def inference(self) -> None:
         # Inference must wait for a trained model to be available
         while not self.model_weights_available:
             time.sleep(1)
 
-        self.submit_task(self.inference_input, "inference")
-        self.inference_input.clear()  # Clear batched data
+        self.submit_task("inference", self.inference_input)
+        # self.inference_input.clear()  # Clear batched data
+
+    def handle_simulation_output(self, output: MDSimulationOutput) -> None:
+        # Collect simulation results
+        self.train_input.append(output.contact_map_path, output.rmsd_path)
+        self.inference_input.append(output.contact_map_path, output.rmsd_path)
+        # Since we are not clearing the train/inference inputs, the length will be the same
+        num_sims = len(self.train_input)
+
+        if num_sims and (num_sims % self.simulations_per_train == 0):
+            self.run_training.set()
+
+        if num_sims and (num_sims % self.simulations_per_inference == 0):
+            self.run_inference.set()
 
     def handle_train_output(self, output: CVAETrainOutput) -> None:
         self.inference_input.model_weight_path = output.model_weight_path
@@ -89,6 +140,9 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
         # the output restart values should be sorted such that the first
         # element in sim_dirs and sim_frames is the leading restart point.
         with self.simulation_govenor:
+            # First empty the queue of old outliers
+            self.simulation_input_queue.queue.clear()
+            # Then fill it back up with new outliers
             for sim_dir, sim_frame in zip(output.sim_dirs, output.sim_frames):
                 self.simulation_input_queue.put(
                     MDSimulationInput(sim_dir=sim_dir, sim_frame=sim_frame)
@@ -132,38 +186,20 @@ if __name__ == "__main__":
         proxystore_threshold=10000,
     )
 
-    # Setup the applications
-    testing = " --test" if args.test else ""
-    application_factory = functools.partial(
-        register_application,
-        func=application,
-        communication_path=cfg.run_dir / "comm",
-    )
-    run_simulation = application_factory(
-        name="run_simulation",
-        config=cfg.simulation_settings,
-        exec_path="-m deepdrivemd.applications.openmm_simulation.app" + testing,
-        return_type=MDSimulationOutput,
-    )
-    run_train = application_factory(
-        name="run_train",
-        config=cfg.train_settings,
-        exec_path="-m deepdrivemd.applications.cvae_train.app" + testing,
-        return_type=CVAETrainOutput,
-    )
-    run_inference = application_factory(
-        name="run_inference",
-        config=cfg.inference_settings,
-        exec_path="-m deepdrivemd.applications.cvae_inference.app" + testing,
-        return_type=CVAEInferenceOutput,
-    )
-
     # Define the parsl configuration (this can be done using the config_factory
     # for common use cases or by defining your own configuration.)
     parsl_config = cfg.compute_settings.config_factory(cfg.run_dir / "run-info")
 
+    # Assign constant settings to each task function
+    my_run_simulation = partial(run_simulation, config=cfg.simulation_settings)
+    my_run_train = partial(run_train, config=cfg.train_settings)
+    my_run_inference = partial(run_inference, config=cfg.inference_settings)
+    update_wrapper(my_run_simulation, run_simulation)
+    update_wrapper(my_run_train, run_train)
+    update_wrapper(my_run_inference, run_inference)
+
     doer = ParslTaskServer(
-        [run_simulation, run_train, run_inference], queues, parsl_config
+        [my_run_simulation, my_run_train, my_run_inference], queues, parsl_config
     )
 
     thinker = DeepDriveMD_OpenMM_CVAE(
