@@ -18,6 +18,7 @@ The computational motif implemented by DeepDriveMD to support ML/AI-coupled simu
 Create a conda environment
 ```console
 conda create -n deepdrivemd python=3.9 -y
+conda activate deepdrivemd
 ```
 
 To install OpenMM for simulations:
