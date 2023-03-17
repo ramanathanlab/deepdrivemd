@@ -42,14 +42,33 @@ python -m deepdrivemd.workflows.openmm_cvae -c tests/apps-enabled-workstation/te
 ```
 This will generate an output directory for the run with logs, results, and task specific output folders.
 
-Each test will write a timestamped run directory to the `runs/` directory specified in `tests/basic-local/test.yaml`.
+Each test will write a timestamped experiment output directory to the `runs/` directory.
 
-To clean up the runs (by default these are ignored by git):
+Inside the output directory, you will find:
 ```console
-rm -r runs/
+$ ls runs/experiment-170323-091525/
+inference  params.yaml  result  run-info  runtime.log  simulation  train
 ```
+- `params.yaml`: the full configuration file (default parameters included)
+- `runtime.log`: the workflow log
+- `result`: a directory containing JSON files `simulation.json`, `train.json`, `inference.json` which log task results including success or failure, potential error messages, runtime statistics. This can be helpful for debugging application-level failures.
+- `simulation`, `train`, `inference`: output directories each containing subdirectories `run-<uuid>` for each submitted task. This is where the output files of your simulations, preprocessed data, model weights, etc will be written by your applications (it corresponds to the application workdir).
+- `run-info`: Parsl logs
 
-Production runs can be configured and run analogously. See `examples/bba-folding-workstation/` for an example of folding the [1FME](https://www.rcsb.org/structure/1FME) protein.
+An example, the simulation run directories may look like:
+```console
+ls runs/experiment-170323-091525/simulation/run-08843adb-65e1-47f0-b0f8-34821aa45923:
+1FME-unfolded.pdb  contact_map.npy  input.yaml  output.yaml  rmsd.npy  sim.dcd  sim.log
+```
+- `1FME-unfolded.pdb` the PDB file used to start the simulation
+- `contact_map.npy`, `rmsd.npy`: the preprocessed data files which will be input into the train and inference tasks
+- `input.yaml`, `output.yaml`: These simply log the task function input and return values, they are helpful for debugging but not strtictly necessary
+- `sim.dcd`: the simulation trajectory file containing all the coordinate frames
+- `sim.log`: a simulation log detailing the energy, steps taken, ns/day, etc
+
+By default the `runs/` directory is ignored by git.
+
+Production runs can be configured and run analogously. See `examples/bba-folding-workstation/` for a detailed example of folding the [1FME](https://www.rcsb.org/structure/1FME) protein. **The YAML files document the configuration settings and explain the use case**.
 
 
 ## Contributing
