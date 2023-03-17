@@ -188,11 +188,11 @@ class Application(ABC):
         persistent_dir location, if node local stoage is being used. If node
         local storage is not being used, workdir and persistent_dir are the same."""
 
-        # If we add __workdir in the constructor, then pydantic will expose this
-        # implmentation detail in the yaml file.
+        # Check if the workdir has been initialized
         if isinstance(self.__workdir, Path):
             return self.__workdir
 
+        # Initialize a workdir of the form run-<uuid>
         workdir_parent = (
             self.config.output_dir
             if self.config.node_local_path is None
