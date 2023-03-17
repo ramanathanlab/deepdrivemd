@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from deepdrivemd.api import (
     ApplicationSettings,
@@ -11,8 +11,12 @@ from deepdrivemd.api import (
 
 class CVAEInferenceInput(BatchSettings):
     contact_map_paths: List[Path]
+    """A list of contact map .npy files to process."""
     rmsd_paths: List[Path]
+    """A list of rmsd .npy files to process. The ith rmsd_path and contact_map_path
+    should correspond to the same simualtion."""
     model_weight_path: Path
+    """The trained model weights .pt file to use for inference."""
 
 
 class CVAEInferenceOutput(BaseSettings):
@@ -23,12 +27,14 @@ class CVAEInferenceOutput(BaseSettings):
 
 
 class CVAEInferenceSettings(ApplicationSettings):
-    # Optionally resume training from a checkpoint file
-    checkpoint_path: Optional[Path] = None
     cvae_settings_yaml: Path
+    """Path to the CVAE hyperparameters."""
     inference_batch_size: int = 128
+    """The batch size to use during inference (larger batch size will be faster)."""
     sklearn_num_jobs: int = 8
+    """The number of cores to use for sklearn LOF method."""
     num_outliers: int = 120
+    """The number of latent space outliers to consider when picking the minimal RMSD structures."""
 
     # validators
     _checkpoint_path = path_validator("checkpoint_path")
