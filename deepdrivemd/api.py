@@ -66,8 +66,7 @@ class ApplicationSettings(BaseSettings):
 
 
 class BatchSettings(BaseSettings):
-    """A mixin for easily handling data classes
-    representing data batches with multiple lists."""
+    """Dataclass utilities for data batches with multiple lists."""
 
     def __len__(self) -> int:
         lists = self.get_lists()
