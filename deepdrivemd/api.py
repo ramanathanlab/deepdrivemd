@@ -1,4 +1,3 @@
-import argparse
 import itertools
 import json
 import logging
@@ -145,19 +144,6 @@ class DeepDriveMDSettings(BaseSettings):
 
     # validators
     _simulation_input_dir_exists = path_validator("simulation_input_dir")
-
-
-def parse_application_args() -> argparse.Namespace:
-    """Utility CLI for parsing config files."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-c", "--config", help="YAML config file", type=Path, required=True
-    )
-    parser.add_argument(
-        "-t", "--test", action="store_true", help="Test Mock Application"
-    )
-    args = parser.parse_args()
-    return args
 
 
 # TODO: Add logger to Application which writes to file in workdir
