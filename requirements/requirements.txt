@@ -1,7 +1,7 @@
-parsl==2022.12.5
-pydantic==1.10.2
+parsl==2023.3.6
+pydantic==1.10.6
 pyyaml==6.0
-colmena==0.4.0
+colmena==0.4.4
 MDAnalysis==2.3.0
 mdlearn==0.0.10a1
 scikit-learn==1.1.3

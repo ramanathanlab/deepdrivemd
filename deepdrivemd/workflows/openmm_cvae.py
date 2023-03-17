@@ -1,4 +1,4 @@
-"""DeepDriveMD using OpenMM for simulation and a convolutational
+"""DeepDriveMD using OpenMM for simulation and a convolutional
 variational autoencoder for adaptive control."""
 import functools
 import logging
@@ -6,14 +6,16 @@ import time
 from argparse import ArgumentParser
 from pathlib import Path
 
-import proxystore as ps
 from colmena.queue.python import PipeQueues
 from colmena.task_server import ParslTaskServer
+from proxystore.store import register_store
+from proxystore.store.file import FileStore
 
 from deepdrivemd.api import (
     DeepDriveMDSettings,
     DeepDriveMDWorkflow,
     InferenceCountDoneCallback,
+    SimulationCountDoneCallback,
     TimeoutDoneCallback,
 )
 from deepdrivemd.applications.cvae_inference import (
@@ -27,9 +29,9 @@ from deepdrivemd.applications.cvae_train import (
     CVAETrainSettings,
 )
 from deepdrivemd.applications.openmm_simulation import (
+    MDSimulationInput,
     MDSimulationOutput,
     MDSimulationSettings,
-    SimulationFromRestart,
 )
 from deepdrivemd.parsl import ComputeSettingsTypes
 from deepdrivemd.utils import application, register_application
@@ -90,7 +92,7 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
         with self.simulation_govenor:
             for sim_dir, sim_frame in zip(output.sim_dirs, output.sim_frames):
                 self.simulation_input_queue.put(
-                    SimulationFromRestart(sim_dir=sim_dir, sim_frame=sim_frame)
+                    MDSimulationInput(sim_dir=sim_dir, sim_frame=sim_frame)
                 )
 
         self.logger.info(
@@ -120,9 +122,8 @@ if __name__ == "__main__":
     cfg.configure_logging()
 
     # Make the proxy store
-    ps_store = ps.store.init_store(
-        store_type="file", name="file", store_dir=str(cfg.run_dir / "proxy-store")
-    )
+    store = FileStore(name="file", store_dir=str(cfg.run_dir / "proxy-store"))
+    register_store(store)
 
     # Make the queues
     queues = PipeQueues(
@@ -169,13 +170,13 @@ if __name__ == "__main__":
     thinker = DeepDriveMD_OpenMM_CVAE(
         queue=queues,
         result_dir=cfg.run_dir / "result",
-        input_pdb_dir=cfg.input_pdb_dir,
+        simulation_input_dir=cfg.simulation_input_dir,
         num_workers=cfg.num_workers,
         simulations_per_train=cfg.simulations_per_train,
         simulations_per_inference=cfg.simulations_per_inference,
         done_callbacks=[
-            InferenceCountDoneCallback(2),  # Testing
-            # SimulationCountDoneCallback(cfg.num_total_simulations),
+            # InferenceCountDoneCallback(2),  # Testing
+            SimulationCountDoneCallback(cfg.num_total_simulations),
             TimeoutDoneCallback(cfg.duration_sec),
         ],
     )
@@ -197,4 +198,4 @@ if __name__ == "__main__":
     doer.join()
 
     # Clean up proxy store
-    ps_store.cleanup()
+    store.close()

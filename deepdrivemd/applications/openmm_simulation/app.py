@@ -18,13 +18,9 @@ except ImportError:
 from MDAnalysis.analysis import align, distances, rms
 
 from deepdrivemd.applications.openmm_simulation import (
-    ContinueSimulation,
     MDSimulationInput,
     MDSimulationOutput,
     MDSimulationSettings,
-    SimulationFromPDB,
-    SimulationFromRestart,
-    SimulationStartType,
 )
 from deepdrivemd.utils import Application, parse_application_args
 
@@ -175,14 +171,14 @@ def configure_simulation(
     """
     # Configure hardware
     try:
-        platform = openmm.Platform_getPlatformByName("CUDA")
+        platform = openmm.Platform.getPlatformByName("CUDA")
         platform_properties = {"DeviceIndex": str(gpu_index), "CudaPrecision": "mixed"}
     except Exception:
         try:
-            platform = openmm.Platform_getPlatformByName("OpenCL")
+            platform = openmm.Platform.getPlatformByName("OpenCL")
             platform_properties = {"DeviceIndex": str(gpu_index)}
         except Exception:
-            platform = openmm.Platform_getPlatformByName("CPU")
+            platform = openmm.Platform.getPlatformByName("CPU")
             platform_properties = {}
 
     # Select implicit or explicit solvent configuration
@@ -241,34 +237,47 @@ class MDSimulationApplication(Application):
     def __init__(self, config: MDSimulationSettings) -> None:
         super().__init__(config)
         # Store simulation state to enable continuing a given simulation
-        self.sim: "app.Simulation" = None
         self.pdb_file: Optional[Path] = None
-        self.top_file: Optional[Path] = None
 
-    @staticmethod
-    def write_pdb_frame(
-        pdb_file: Path, dcd_file: Path, frame: int, output_pdb_file: Path
-    ) -> None:
-        mda_u = MDAnalysis.Universe(str(pdb_file), str(dcd_file))
-        mda_u.trajectory[frame]
-        mda_u.atoms.write(str(output_pdb_file))
-
-    @staticmethod
-    def glob_topology(directory: Path) -> Optional[Path]:
+    def copy_topology(self, directory: Path) -> Optional[Path]:
         """Scan directory for optional topology file (assumes topology
         file is in the same directory as the PDB file and that only
         one PDB/topology file exists in each directory.)"""
         top_file = next(directory.glob("*.top"), None)
         if top_file is None:
             top_file = next(directory.glob("*.prmtop"), None)
+        top_file = self.copy_to_workdir(top_file)
         return top_file
 
-    def init_simulation(self, pdb_file: Path, top_file: Optional[Path]) -> None:
-        """Initialize and cache a simulation object."""
-        if self.sim is not None:
-            del self.sim
+    def generate_restart_pdb(self, sim_dir: Path, frame: int) -> Path:
+        """Generate a new PDB from a given `frame` of a previous simulation."""
+        old_pdb_file = next(sim_dir.glob("*.pdb"))
+        dcd_file = next(sim_dir.glob("*.dcd"))
+        # New pdb file to write, example: workdir/run-<uuid>_frame000000.pdb
+        pdb_file = self.workdir / f"{old_pdb_file.parent.name}_frame{frame:06}.pdb"
+        mda_u = MDAnalysis.Universe(str(old_pdb_file), str(dcd_file))
+        mda_u.trajectory[frame]
+        mda_u.atoms.write(str(pdb_file))
+        return pdb_file
 
-        self.sim = configure_simulation(
+    def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
+
+        if input_data.sim_frame is None:
+            # No restart point, starting from initial PDB
+            pdb_file = next(input_data.sim_dir.glob("*.pdb"))
+            pdb_file = self.copy_to_workdir(pdb_file)
+            assert pdb_file is not None
+        else:
+            # Collect PDB, DCD, and topology files from previous simulation
+            pdb_file = self.generate_restart_pdb(
+                input_data.sim_dir, input_data.sim_frame
+            )
+
+        # Collect an optional topology file
+        top_file = self.copy_topology(input_data.sim_dir)
+
+        # Initialize an OpenMM simulation
+        sim = configure_simulation(
             pdb_file=pdb_file,
             top_file=top_file,
             solvent_type=self.config.solvent_type,
@@ -277,55 +286,6 @@ class MDSimulationApplication(Application):
             temperature_kelvin=self.config.temperature_kelvin,
             heat_bath_friction_coef=self.config.heat_bath_friction_coef,
         )
-
-    def init_continue_simulation(self, simulation_start: ContinueSimulation) -> None:
-        # Use cached values
-        if self.sim is None:
-            raise RuntimeError(
-                f"Tried to continue a simulation that doesn't exist. {vars(self)}"
-            )
-        assert self.pdb_file is not None
-        # TODO: If we are using node_local_storage, then the self.pdb_file will not be found
-        # since it will have been moved back to persistent storage.
-        self.pdb_file = self.copy_to_workdir(self.pdb_file)
-        self.top_file = self.copy_to_workdir(self.top_file)
-
-    def init_simulation_from_pdb(self, simulation_start: SimulationFromPDB) -> None:
-        self.pdb_file = self.copy_to_workdir(simulation_start.pdb_file)
-        top_file = self.glob_topology(simulation_start.pdb_file.parent)
-        self.top_file = self.copy_to_workdir(top_file)
-        assert self.pdb_file is not None
-        self.init_simulation(self.pdb_file, self.top_file)
-
-    def init_simulation_from_restart(
-        self, simulation_start: SimulationFromRestart
-    ) -> None:
-        sim_dir = simulation_start.sim_dir
-        frame = simulation_start.sim_frame
-
-        # Collect PDB, DCD, and topology files from previous simulation
-        old_pdb_file = next(sim_dir.glob("*.pdb"))
-        dcd_file = next(sim_dir.glob("*.dcd"))
-        self.top_file = self.copy_to_workdir(self.glob_topology(sim_dir))
-
-        # New pdb file to write, example: run-<uuid>_frame000000.pdb
-        pdb_name = f"{old_pdb_file.parent.name}_frame{frame:06}.pdb"
-        self.pdb_file = self.workdir / pdb_name
-        self.write_pdb_frame(old_pdb_file, dcd_file, frame, self.pdb_file)
-        self.init_simulation(self.pdb_file, self.top_file)
-
-    def initialize_run(self, simulation_start: SimulationStartType) -> None:
-        if isinstance(simulation_start, ContinueSimulation):
-            self.init_continue_simulation(simulation_start)
-        elif isinstance(simulation_start, SimulationFromPDB):
-            self.init_simulation_from_pdb(simulation_start)
-        else:
-            assert isinstance(simulation_start, SimulationFromRestart)
-            self.init_simulation_from_restart(simulation_start)
-
-    def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
-        # Initialize self.sim, self.pdb_file, and self.top_file given new inputs
-        self.initialize_run(input_data.simulation_start)
 
         # openmm typed variables
         dt_ps = self.config.dt_ps * u.picoseconds
@@ -339,9 +299,8 @@ class MDSimulationApplication(Application):
 
         # Set up reporters to write simulation trajectory file and logs
         traj_file = self.workdir / "sim.dcd"
-        self.sim.reporters = []  # Clear out cached reporters from previous run
-        self.sim.reporters.append(app.DCDReporter(traj_file, report_steps))
-        self.sim.reporters.append(
+        sim.reporters.append(app.DCDReporter(traj_file, report_steps))
+        sim.reporters.append(
             app.StateDataReporter(
                 str(self.workdir / "sim.log"),
                 report_steps,
@@ -355,15 +314,16 @@ class MDSimulationApplication(Application):
         )
 
         # Run simulation
-        self.sim.step(nsteps)
+        sim.step(nsteps)
 
         # Analyze simulation and collect contact maps and RMSD to native state
-        assert self.pdb_file is not None
-        contact_maps, rmsds = self.analyze_simulation(self.pdb_file, traj_file)
+        contact_maps, rmsds = self.analyze_simulation(pdb_file, traj_file)
 
         # Save simulation analysis
         np.save(self.workdir / "contact_map.npy", contact_maps)
         np.save(self.workdir / "rmsd.npy", rmsds)
+
+        del sim
 
         # Return simulation analysis outputs
         return MDSimulationOutput(
