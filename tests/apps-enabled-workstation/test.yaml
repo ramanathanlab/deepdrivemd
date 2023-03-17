@@ -5,15 +5,16 @@ simulations_per_inference: 2
 num_total_simulations: 4
 
 compute_settings:
-  name: local
+  name: workstation
+  available_accelerators: ["1", "2", "3", "4"]
 
 simulation_settings:
   simulation_length_ns: 1
   rmsd_reference_pdb: data/1fme/1FME-folded.pdb
 
 train_settings:
-  cvae_settings_yaml: tests/basic-local/cvae-settings.yaml
+  cvae_settings_yaml: tests/apps-enabled-workstation/cvae-settings.yaml
 
 inference_settings:
-  cvae_settings_yaml: tests/basic-local/cvae-settings.yaml
-  num_outliers: 2
+  cvae_settings_yaml: tests/apps-enabled-workstation/cvae-settings.yaml
+  num_outliers: 4

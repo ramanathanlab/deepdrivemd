@@ -7,20 +7,15 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from queue import Queue
-from threading import Semaphore
+from threading import Event, Semaphore
 from typing import Any, Dict, List
 
 from colmena.models import Result
 from colmena.queue import ColmenaQueues
-from colmena.thinker import BaseThinker, agent, result_processor
+from colmena.thinker import BaseThinker, agent, event_responder, result_processor
 from pydantic import root_validator
 
-from deepdrivemd.applications.openmm_simulation import (
-    ContinueSimulation,
-    MDSimulationInput,
-    SimulationFromPDB,
-    SimulationFromRestart,
-)
+from deepdrivemd.applications.openmm_simulation import MDSimulationInput
 from deepdrivemd.config import ApplicationSettings, BaseSettings, path_validator
 
 
@@ -35,8 +30,10 @@ class DeepDriveMDSettings(BaseSettings):
     """Address at which the redis server can be reached."""
     redisport: int = 6379
     """Port on which redis is available."""
-    input_pdb_dir: Path
-    """Nested PDB input directory, e.g. pdb_dir/system1/system1.pdb, pdb_dir/system2/system2.pdb."""
+    simulation_input_dir: Path
+    """Nested directory storing initial simulation start files,
+    e.g. pdb_dir/system1/, pdb_dir/system2/, ..., where system<i> might store
+    PDB files, topology files, etc needed to start the simulation application."""
     num_total_simulations: int
     """Number of simulations before signalling to stop (more simulations may be run)."""
     duration_sec: float = float("inf")
@@ -80,7 +77,7 @@ class DeepDriveMDSettings(BaseSettings):
         return values
 
     # validators
-    _input_pdb_dir_exists = path_validator("input_pdb_dir")
+    _simulation_input_dir_exists = path_validator("simulation_input_dir")
 
 
 class DoneCallback(ABC):
@@ -145,7 +142,7 @@ class DeepDriveMDWorkflow(BaseThinker):
         self,
         queue: ColmenaQueues,
         result_dir: Path,
-        input_pdb_dir: Path,
+        simulation_input_dir: Path,
         num_workers: int,
         done_callbacks: List[DoneCallback],
     ) -> None:
@@ -156,8 +153,8 @@ class DeepDriveMDWorkflow(BaseThinker):
             Queue used to communicate with the task server
         result_dir:
             Directory in which to store outputs
-        input_pdb_dir:
-            Directory holding initial starting structures
+        simulation_input_dir:
+            Directory with subdirectories each storing initial simulation start files.
         num_workers:
             Number of workers available for executing simulations, training,
             and inference tasks. One worker is reserved for each training
@@ -169,16 +166,25 @@ class DeepDriveMDWorkflow(BaseThinker):
 
         result_dir.mkdir(exist_ok=True)
         self.result_dir = result_dir
-        self.input_pdb_dir = input_pdb_dir
         self.num_workers = num_workers
+
+        # Collect initial simulation directories, assumes they are in nested subdirectories
+        self.simulation_input_dirs = itertools.cycle(
+            filter(lambda p: p.is_dir(), simulation_input_dir.glob("*"))
+        )
+
+        # Keep track of the workflow state
+        self.simulations_completed = 0
 
         # Number of times a given task has been submitted
         self.task_counter = defaultdict(int)
         self.done_callbacks = done_callbacks
 
         # Communicate information between agents
-        self.simulation_input_queue: Queue[SimulationFromRestart] = Queue()
+        self.simulation_input_queue: Queue[MDSimulationInput] = Queue()
         self.simulation_govenor = Semaphore()
+        self.run_training = Event()
+        self.run_inference = Event()
 
     def log_result(self, result: Result, topic: str) -> None:
         """Write a JSON result per line of the output file."""
@@ -204,91 +210,128 @@ class DeepDriveMDWorkflow(BaseThinker):
     @agent(startup=True)
     def start_simulations(self) -> None:
         """Launch a first batch of simulations"""
-
-        # TODO: We could generalize this further by simply passing a list of
-        # simulation input directories for which the simlulation app is
-        # responsible for parsing files from. This would help to support
-        # simulation engines that don't use pdb files as input.
-
-        # Collect initial PDB files, assumes they are in nested subdirectories,
-        # e.g., pdb_dir/system1/system1.pdb, pdb_dir/system2/system2.pdb.
-        # This allows us to put topology files in the same subdirectory as the
-        # PDB file, which is parsed below.
-        initial_pdbs = itertools.cycle(self.input_pdb_dir.glob("**/*.pdb"))
-
-        # We cycle around the input PDBs, for instance if there is only a single PDB file,
-        # we start all the tasks using it. If there are two input PDBs, we alternate them
-        # between task submissions.
+        # We cycle around the input directories for instance if there is only a single directory,
+        # we start all the tasks using it. If there are two input directories, we alternate them
+        # between task submissions. Saving two workers for training and inference.
         for _ in range(self.num_workers - 2):
-            # TODO: Clean up this API so that it works for a generalized simulation engine
-            simulation_start = SimulationFromPDB(pdb_file=next(initial_pdbs))
-            inputs = MDSimulationInput(simulation_start=simulation_start)
+            inputs = MDSimulationInput(sim_dir=next(self.simulation_input_dirs))
             self.submit_task(inputs, "simulation")
 
     @result_processor(topic="simulation")
     def process_simulation_result(self, result: Result) -> None:
+        """Receive a training result and then submit new tasks
+
+        Will always submit a new simulation tasks and an inference or training
+        if the :meth:`handle_simulation_output` sets the appropriate flags."""
         # Log simulation job results
         self.log_result(result, "simulation")
         if not result.success:
+            # TODO (wardlt): Should we submit a new simulation if one fails?
+            # (braceal): Yes, I think so.
             return self.logger.warning("Bad simulation result")
+        self.simulations_completed += 1
+
         # This function is running an implicit while-true loop
         # we need to break out if the done flag has been sent,
         # otherwise it will submit a new simulation.
         if self.done.is_set():
             return
+
         # Select a method to start another simulation. If AI inference
         # is currently adding new restart points to the queue, we block
         # until it has finished so we can use the latest information.
         with self.simulation_govenor:
             if not self.simulation_input_queue.empty():
                 # If the AI inference has selected restart points, use those
-                simulation_start = self.simulation_input_queue.get()
+                inputs = self.simulation_input_queue.get()
             else:
-                # Otherwise, continue an existing simulation
-                simulation_start = ContinueSimulation()
+                # Otherwise, restart an initial simulation
+                inputs = MDSimulationInput(sim_dir=next(self.simulation_input_dirs))
 
         # Submit another simulation as soon as the previous one finishes
         # to keep utilization high
-        inputs = MDSimulationInput(simulation_start=simulation_start)
         self.submit_task(inputs, "simulation")
 
         # Parse simulation output values
         output: BaseSettings = result.value
 
         # Result should be used to train the model and infer new restart points
-        self.train(output)
-        self.inference(output)
+        self.handle_simulation_output(output)
 
-    @result_processor(topic="train")
-    def process_train_result(self, result: Result) -> None:
+    # TODO (wardlt): We can have this event_responder allocate resources away from simulation if desired.
+    @event_responder(event_name="run_training")
+    def perform_training(self) -> None:
+        self.logger.info("Started training process")
+
+        # Send in a training task
+        self.train()
+
+        # Wait for the result to complete
+        result: Result = self.queues.get_result(topic="train")
+        self.logger.info("Received training result")
+
         self.log_result(result, "train")
         if not result.success:
             return self.logger.warning("Bad train result")
 
+        # Process the training output
         output: BaseSettings = result.value
         self.handle_train_output(output)
+        self.logger.info("Training process is complete")
 
-    @result_processor(topic="inference")
-    def process_inference_result(self, result: Result) -> None:
+    # TODO (wardlt): We can have this event_responder allocate resources away from simulation if desired.
+    @event_responder(event_name="run_inference")
+    def perform_inference(self) -> None:
+        self.logger.info("Started inference process")
+
+        # Send in an inference task
+        self.inference()
+
+        # Wait for the result to complete
+        result: Result = self.queues.get_result(topic="inference")
+        self.logger.info("Received inference result")
+
         self.log_result(result, "inference")
         if not result.success:
             return self.logger.warning("Bad inference result")
 
         output: BaseSettings = result.value
         self.handle_inference_output(output)
+        self.logger.info("Inference process is complete")
 
     @abstractmethod
-    def train(self, output: BaseSettings) -> None:
+    def train(self) -> None:
+        """Start a training task.
+
+        Must call :meth:`submit_task` with ``topic='train'``"""
         ...
 
     @abstractmethod
-    def inference(self, output: BaseSettings) -> None:
+    def inference(self) -> None:
+        """Start an inference task
+
+        Must call a :meth:`submit_task` with ``topic='infer'``"""
+        ...
+
+    @abstractmethod
+    def handle_simulation_output(self, output: BaseSettings) -> None:
+        """Stores a simulation output in the training set and define new inference tasks
+
+        Should call ``self.run_training.set()``
+
+        Parameters
+        ----------
+        output:
+            Output to be processed
+        """
         ...
 
     @abstractmethod
     def handle_train_output(self, output: BaseSettings) -> None:
+        """Use the output from a training run to update the model"""
         ...
 
     @abstractmethod
     def handle_inference_output(self, output: BaseSettings) -> None:
+        """Use the output from an inference run to update the list of available simulations"""
         ...

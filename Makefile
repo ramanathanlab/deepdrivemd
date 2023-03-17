@@ -41,8 +41,12 @@ coverage:
 	open htmlcov/index.html
 
 .PHONY: pygount
-make pygount:
-	pygount --format=summary deepdrivemd
+pygount:
+	pygount --format=summary $(package_name)
+
+.PHONY: radon
+radon:
+	radon cc $(package_name) -a
 
 .PHONY: all
-all: format lint #mypy
+all: format lint # mypy

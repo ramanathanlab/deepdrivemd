@@ -1,18 +1,20 @@
-"""DeepDriveMD using OpenMM for simulation and a convolutational
+"""DeepDriveMD using OpenMM for simulation and a convolutional
 variational autoencoder for adaptive control."""
 import functools
 import logging
+import time
 from argparse import ArgumentParser
 from pathlib import Path
 
-import proxystore as ps
 from colmena.queue.python import PipeQueues
 from colmena.task_server import ParslTaskServer
+from proxystore.store import register_store
+from proxystore.store.file import FileStore
 
-from deepdrivemd.api import (
+from deepdrivemd.api import (  # InferenceCountDoneCallback,
     DeepDriveMDSettings,
     DeepDriveMDWorkflow,
-    InferenceCountDoneCallback,
+    SimulationCountDoneCallback,
     TimeoutDoneCallback,
 )
 from deepdrivemd.applications.cvae_inference import (
@@ -26,9 +28,9 @@ from deepdrivemd.applications.cvae_train import (
     CVAETrainSettings,
 )
 from deepdrivemd.applications.openmm_simulation import (
+    MDSimulationInput,
     MDSimulationOutput,
     MDSimulationSettings,
-    SimulationFromRestart,
 )
 from deepdrivemd.parsl import ComputeSettingsTypes
 from deepdrivemd.utils import application, register_application
@@ -39,10 +41,6 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
         self, simulations_per_train: int, simulations_per_inference: int, **kwargs
     ) -> None:
         super().__init__(**kwargs)
-
-        # Make sure there is at most one training and inference task running at a time
-        self.running_train = False
-        self.running_inference = False
 
         # Make sure there has been at least one training task complete before running inference
         self.model_weights_available: bool = False
@@ -57,46 +55,35 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
             contact_map_paths=[], rmsd_paths=[], model_weight_path=Path()
         )
 
-    def train(self, output: MDSimulationOutput) -> None:
+    def handle_simulation_output(self, output: MDSimulationOutput) -> None:
         # Collect simulation results
-        self.train_input.contact_map_paths.append(output.contact_map_path)
-        self.train_input.rmsd_paths.append(output.rmsd_path)
-        # If a training run is already going, then exit
-        if self.running_train:
-            return
-        # Train model if enough data is available
+        self.train_input.append(output.contact_map_path, output.rmsd_path)
+        self.inference_input.append(output.contact_map_path, output.rmsd_path)
+
         if len(self.train_input.rmsd_paths) >= self.simulations_per_train:
-            self.running_train = True
-            self.submit_task(self.train_input, "train")
-            # Clear batched data
-            self.train_input.contact_map_paths = []
-            self.train_input.rmsd_paths = []
-
-    def inference(self, output: MDSimulationOutput) -> None:
-        # Collect simulation results
-        self.inference_input.contact_map_paths.append(output.contact_map_path)
-        self.inference_input.rmsd_paths.append(output.rmsd_path)
-
-        # Run inference if enough data is available and at least
-        # one round of training has finished.
-        if self.running_inference or not self.model_weights_available:
-            return
+            self.run_training.set()
 
         if len(self.inference_input.rmsd_paths) >= self.simulations_per_inference:
-            self.running_inference = True
-            self.submit_task(self.inference_input, "inference")
-            # Clear batched data
-            self.inference_input.contact_map_paths = []
-            self.inference_input.rmsd_paths = []
+            self.run_inference.set()
+
+    def train(self) -> None:
+        self.submit_task(self.train_input, "train")
+        self.train_input.clear()  # Clear batched data
+
+    def inference(self) -> None:
+        # Inference must wait for a trained model to be available
+        while not self.model_weights_available:
+            time.sleep(1)
+
+        self.submit_task(self.inference_input, "inference")
+        self.inference_input.clear()  # Clear batched data
 
     def handle_train_output(self, output: CVAETrainOutput) -> None:
-        self.running_train = False
         self.inference_input.model_weight_path = output.model_weight_path
         self.model_weights_available = True
         self.logger.info(f"Updated model_weight_path to: {output.model_weight_path}")
 
     def handle_inference_output(self, output: CVAEInferenceOutput) -> None:
-        self.running_inference = False
         # Add restart points to simulation input queue while holding the lock
         # so that the simulations see the latest information. Note that
         # the output restart values should be sorted such that the first
@@ -104,7 +91,7 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
         with self.simulation_govenor:
             for sim_dir, sim_frame in zip(output.sim_dirs, output.sim_frames):
                 self.simulation_input_queue.put(
-                    SimulationFromRestart(sim_dir=sim_dir, sim_frame=sim_frame)
+                    MDSimulationInput(sim_dir=sim_dir, sim_frame=sim_frame)
                 )
 
         self.logger.info(
@@ -114,6 +101,8 @@ class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
 
 
 class ExperimentSettings(DeepDriveMDSettings):
+    """Provide a YAML interface to configure the experiment."""
+
     simulation_settings: MDSimulationSettings
     train_settings: CVAETrainSettings
     inference_settings: CVAEInferenceSettings
@@ -132,9 +121,8 @@ if __name__ == "__main__":
     cfg.configure_logging()
 
     # Make the proxy store
-    ps_store = ps.store.init_store(
-        store_type="file", name="file", store_dir=str(cfg.run_dir / "proxy-store")
-    )
+    store = FileStore(name="file", store_dir=str(cfg.run_dir / "proxy-store"))
+    register_store(store)
 
     # Make the queues
     queues = PipeQueues(
@@ -181,13 +169,13 @@ if __name__ == "__main__":
     thinker = DeepDriveMD_OpenMM_CVAE(
         queue=queues,
         result_dir=cfg.run_dir / "result",
-        input_pdb_dir=cfg.input_pdb_dir,
+        simulation_input_dir=cfg.simulation_input_dir,
         num_workers=cfg.num_workers,
         simulations_per_train=cfg.simulations_per_train,
         simulations_per_inference=cfg.simulations_per_inference,
         done_callbacks=[
-            InferenceCountDoneCallback(2),  # Testing
-            # SimulationCountDoneCallback(cfg.num_total_simulations),
+            # InferenceCountDoneCallback(2),  # Testing
+            SimulationCountDoneCallback(cfg.num_total_simulations),
             TimeoutDoneCallback(cfg.duration_sec),
         ],
     )
@@ -209,4 +197,4 @@ if __name__ == "__main__":
     doer.join()
 
     # Clean up proxy store
-    ps_store.cleanup()
+    store.close()

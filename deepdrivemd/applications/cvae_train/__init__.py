@@ -1,10 +1,15 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from deepdrivemd.config import ApplicationSettings, BaseSettings, path_validator
+from deepdrivemd.config import (
+    ApplicationSettings,
+    BaseSettings,
+    BatchSettings,
+    path_validator,
+)
 
 
-class CVAETrainInput(BaseSettings):
+class CVAETrainInput(BatchSettings):
     contact_map_paths: List[Path]
     rmsd_paths: List[Path]
 

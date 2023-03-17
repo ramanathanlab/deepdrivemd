@@ -35,7 +35,7 @@ class CVAEInferenceApplication(Application):
     def run(self, input_data: CVAEInferenceInput) -> CVAEInferenceOutput:
         # Load data
         contact_maps = np.concatenate(
-            [np.load(p) for p in input_data.contact_map_paths]
+            [np.load(p, allow_pickle=True) for p in input_data.contact_map_paths]
         )
         _rmsds = [np.load(p) for p in input_data.rmsd_paths]
         rmsds = np.concatenate(_rmsds)
@@ -79,6 +79,8 @@ class CVAEInferenceApplication(Application):
             .head(self.config.num_outliers)  # Take the smallest num_outliers lof scores
             .sort_values("rmsd")  # Finally, sort the smallest lof scores by rmsd
         )
+
+        df.to_csv(self.workdir / "outliers.csv")
 
         # Map each of the selections back to the correct simulation file and frame
         return CVAEInferenceOutput(
