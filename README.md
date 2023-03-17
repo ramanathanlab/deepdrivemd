@@ -36,7 +36,7 @@ make install
 
 ## Usage
 
-The workflow can be tested on a workstation via:
+The workflow can be tested on a workstation (a system with a few GPUs) via:
 ```console
 python -m deepdrivemd.workflows.openmm_cvae -c tests/apps-enabled-workstation/test.yaml
 ```
@@ -49,9 +49,7 @@ To clean up the runs (by default these are ignored by git):
 rm -r runs/
 ```
 
-Production runs can be configured and run analagously. See `examples/bba-folding-workstation/` for an example of folding the [1FME](https://www.rcsb.org/structure/1FME) protein.
-
-**Note**: Mock testing is specified in each of the application scripts `deepdrivemd/applications/*/app.py`.
+Production runs can be configured and run analogously. See `examples/bba-folding-workstation/` for an example of folding the [1FME](https://www.rcsb.org/structure/1FME) protein.
 
 
 ## Contributing
