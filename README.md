@@ -36,9 +36,9 @@ make install
 
 ## Usage
 
-The workflow can be tested locally using mock API's for the tasks by running:
+The workflow can be tested on a workstation via:
 ```console
-python -m deepdrivemd.workflows.openmm_cvae --test -c tests/basic-local/test.yaml
+python -m deepdrivemd.workflows.openmm_cvae -c tests/apps-enabled-workstation/test.yaml
 ```
 This will generate an output directory for the run with logs, results, and task specific output folders.
 
@@ -48,6 +48,8 @@ To clean up the runs (by default these are ignored by git):
 ```console
 rm -r runs/
 ```
+
+Production runs can be configured and run analagously. See `examples/bba-folding-workstation/` for an example of folding the [1FME](https://www.rcsb.org/structure/1FME) protein.
 
 **Note**: Mock testing is specified in each of the application scripts `deepdrivemd/applications/*/app.py`.
 
