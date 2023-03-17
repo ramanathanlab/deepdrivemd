@@ -16,18 +16,18 @@ The computational motif implemented by DeepDriveMD to support ML/AI-coupled simu
 ## Installation
 
 Create a conda environment
-```bash
+```console
 conda create -n deepdrivemd python=3.9 -y
 ```
 
 To install OpenMM for simulations:
-```bash
+```console
 conda install -c conda-forge gcc=12.1.0 -y
 conda install -c conda-forge openmm -y
 ```
 
 To install `deepdrivemd`:
-```bash
+```console
 git clone https://github.com/ramanathanlab/deepdrivemd.git
 cd deepdrivemd
 make install
@@ -36,7 +36,7 @@ make install
 ## Usage
 
 The workflow can be tested locally using mock API's for the tasks by running:
-```bash
+```console
 python -m deepdrivemd.workflows.openmm_cvae --test -c tests/basic-local/test.yaml
 ```
 This will generate an output directory for the run with logs, results, and task specific output folders.
@@ -44,7 +44,7 @@ This will generate an output directory for the run with logs, results, and task 
 Each test will write a timestamped run directory to the `runs/` directory specified in `tests/basic-local/test.yaml`.
 
 To clean up the runs (by default these are ignored by git):
-```bash
+```console
 rm -r runs/
 ```
 
