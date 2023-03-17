@@ -11,10 +11,9 @@ from colmena.task_server import ParslTaskServer
 from proxystore.store import register_store
 from proxystore.store.file import FileStore
 
-from deepdrivemd.api import (
+from deepdrivemd.api import (  # InferenceCountDoneCallback,
     DeepDriveMDSettings,
     DeepDriveMDWorkflow,
-    InferenceCountDoneCallback,
     SimulationCountDoneCallback,
     TimeoutDoneCallback,
 )
