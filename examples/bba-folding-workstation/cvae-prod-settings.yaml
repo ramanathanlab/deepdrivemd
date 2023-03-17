@@ -8,15 +8,15 @@ latent_dim: 3
 lambda_rec: 1.0
 num_data_workers: 4
 prefetch_factor: 2
-batch_size: 1
+batch_size: 64
 device: cuda
 optimizer_name: RMSprop
 optimizer_hparams:
     lr: 0.001
     weight_decay: 0.00001
-epochs: 1
-checkpoint_log_every: 1
-plot_log_every: 1
-plot_n_samples: 10
+epochs: 20
+checkpoint_log_every: 20
+plot_log_every: 20
+plot_n_samples: 5000
 plot_method: raw
 

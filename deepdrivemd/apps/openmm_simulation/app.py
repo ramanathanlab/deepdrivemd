@@ -1,8 +1,6 @@
-import logging
 import random
-import time
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 
 import MDAnalysis
 import numpy as np
@@ -17,16 +15,12 @@ except ImportError:
 
 from MDAnalysis.analysis import align, distances, rms
 
-from deepdrivemd.applications.openmm_simulation import (
+from deepdrivemd.api import Application, PathLike
+from deepdrivemd.apps.openmm_simulation import (
     MDSimulationInput,
     MDSimulationOutput,
     MDSimulationSettings,
 )
-from deepdrivemd.utils import Application, parse_application_args
-
-logger = logging.getLogger(__name__)
-
-PathLike = Union[str, Path]
 
 
 def _configure_amber_implicit(
@@ -36,9 +30,8 @@ def _configure_amber_implicit(
     temperature_kelvin: float,
     heat_bath_friction_coef: float,
     platform: "openmm.Platform",
-    platform_properties: dict,
+    platform_properties: Dict[str, str],
 ) -> Tuple["app.Simulation", Optional["app.PDBFile"]]:
-
     # Configure system
     if top_file is not None:
         pdb = None
@@ -52,7 +45,7 @@ def _configure_amber_implicit(
     else:
         pdb = app.PDBFile(str(pdb_file))
         top = pdb.topology
-        forcefield = app.ForceField("amber99sbildn.xml", "amber99_obc.xml")
+        forcefield = app.ForceField("amber14-all.xml", "implicit/gbn2.xml")
         system = forcefield.createSystem(
             top,
             nonbondedMethod=app.CutoffNonPeriodic,
@@ -81,10 +74,9 @@ def _configure_amber_explicit(
     temperature_kelvin: float,
     heat_bath_friction_coef: float,
     platform: "openmm.Platform",
-    platform_properties: dict,
+    platform_properties: Dict[str, str],
     explicit_barostat: str,
 ) -> "app.Simulation":
-
     top = app.AmberPrmtopFile(str(top_file))
     system = top.createSystem(
         nonbondedMethod=app.PME,
@@ -134,7 +126,7 @@ def configure_simulation(
     explicit_barostat: str = "MonteCarloBarostat",
     run_minimization: bool = True,
     set_positions: bool = True,
-    set_velocities: bool = True,
+    set_velocities: bool = False,
 ) -> "app.Simulation":
     """Configure an OpenMM amber simulation.
     Parameters
@@ -234,11 +226,6 @@ def configure_simulation(
 class MDSimulationApplication(Application):
     config: MDSimulationSettings
 
-    def __init__(self, config: MDSimulationSettings) -> None:
-        super().__init__(config)
-        # Store simulation state to enable continuing a given simulation
-        self.pdb_file: Optional[Path] = None
-
     def copy_topology(self, directory: Path) -> Optional[Path]:
         """Scan directory for optional topology file (assumes topology
         file is in the same directory as the PDB file and that only
@@ -246,7 +233,8 @@ class MDSimulationApplication(Application):
         top_file = next(directory.glob("*.top"), None)
         if top_file is None:
             top_file = next(directory.glob("*.prmtop"), None)
-        top_file = self.copy_to_workdir(top_file)
+        if top_file is not None:
+            top_file = self.copy_to_workdir(top_file)
         return top_file
 
     def generate_restart_pdb(self, sim_dir: Path, frame: int) -> Path:
@@ -261,6 +249,8 @@ class MDSimulationApplication(Application):
         return pdb_file
 
     def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
+        # Log the input data
+        input_data.dump_yaml(self.workdir / "input.yaml")
 
         if input_data.sim_frame is None:
             # No restart point, starting from initial PDB
@@ -323,13 +313,17 @@ class MDSimulationApplication(Application):
         np.save(self.workdir / "contact_map.npy", contact_maps)
         np.save(self.workdir / "rmsd.npy", rmsds)
 
-        del sim
-
         # Return simulation analysis outputs
-        return MDSimulationOutput(
+        output_data = MDSimulationOutput(
             contact_map_path=self.persistent_dir / "contact_map.npy",
             rmsd_path=self.persistent_dir / "rmsd.npy",
         )
+
+        # Log the output data
+        output_data.dump_yaml(self.workdir / "output.yaml")
+        self.backup_node_local()
+
+        return output_data
 
     def analyze_simulation(
         self, pdb_file: Path, traj_file: Path
@@ -364,31 +358,8 @@ class MDSimulationApplication(Application):
             rmsds.append(rmsd)
 
         # Save simulation analysis results
-        contact_maps = [np.concatenate(row_col) for row_col in zip(rows, cols)]
-
-        return contact_maps, rmsds
-
-
-class MockMDSimulationApplication(Application):
-    def __init__(self, config: MDSimulationSettings) -> None:
-        super().__init__(config)
-        time.sleep(5.0)  # Emulate a large startup cost
-
-    def run(self, input_data: MDSimulationInput) -> MDSimulationOutput:
-        (self.workdir / "contact_map.npy").touch()
-        (self.workdir / "rmsd.npy").touch()
-
-        return MDSimulationOutput(
-            contact_map_path=self.persistent_dir / "contact_map.npy",
-            rmsd_path=self.persistent_dir / "rmsd.npy",
+        contact_maps = np.array(
+            [np.concatenate(row_col) for row_col in zip(rows, cols)], dtype=object
         )
 
-
-if __name__ == "__main__":
-    args = parse_application_args()
-    config = MDSimulationSettings.from_yaml(args.config)
-    if args.test:
-        application = MockMDSimulationApplication(config)
-    else:
-        application = MDSimulationApplication(config)
-    application.start()
+        return contact_maps, rmsds

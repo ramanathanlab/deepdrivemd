@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from deepdrivemd.config import ApplicationSettings, BaseSettings, path_validator
+from deepdrivemd.api import ApplicationSettings, BaseSettings, path_validator
 
 
 class MDSimulationInput(BaseSettings):
