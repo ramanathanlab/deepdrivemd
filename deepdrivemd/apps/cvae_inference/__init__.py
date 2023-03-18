@@ -37,5 +37,4 @@ class CVAEInferenceSettings(ApplicationSettings):
     """The number of latent space outliers to consider when picking the minimal RMSD structures."""
 
     # validators
-    _checkpoint_path = path_validator("checkpoint_path")
     _cvae_settings_yaml = path_validator("cvae_settings_yaml")
