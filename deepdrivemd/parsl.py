@@ -84,25 +84,29 @@ class WorkstationSettings(BaseComputeSettings):
 
 
 class LSFStJudeSettings(BaseComputeSettings):
+    """Compute settings for LSF-based cluster at St. Jude."""
+
     name: Literal["lsf"] = "lsf"  # type: ignore[assignment]
     """Name of the platform."""
     queue: str = "dgx"
-    """Name of the queue."""
+    """Name of the scheduler queue to submit to."""
     available_accelerators: int = 8
-    """Number of GPU accelerators to use.a
+    """Number of GPU accelerators to use.
     If running multi-node, set available_accelerators = 8
     Else, number of simulations to run + 1"""
     walltime: str = "00:10:00"
     """Walltime."""
     label: str = "htex"
+    """Label for the HighThroughputExecutor."""
 
     def config_factory(self, run_dir: PathLike) -> Config:
         num_gpus = self.available_accelerators
         return Config(
+            run_dir=str(run_dir),
             executors=[
                 HighThroughputExecutor(
                     label=self.label,
-                    available_accelerators=self.available_accelerators,
+                    available_accelerators=num_gpus,
                     provider=LSFProvider(
                         queue=self.queue,
                         cores_per_block=16,
@@ -110,17 +114,16 @@ class LSFStJudeSettings(BaseComputeSettings):
                         request_by_nodes=False,
                         bsub_redirection=True,
                         scheduler_options=f'#BSUB -gpu "num={num_gpus}/host"',
-                        #launcher=JsrunLauncher(),
+                        # launcher=JsrunLauncher(),
                         walltime=self.walltime,
                         nodes_per_block=1,
                         init_blocks=1,
                         max_blocks=1,
                         # Input your worker environment initialization commands
-                        #worker_init='module load deepdrivemd',
-                        cmd_timeout=60
+                        # worker_init='module load deepdrivemd',
+                        cmd_timeout=60,
                     ),
                 )
-
             ],
         )
 
