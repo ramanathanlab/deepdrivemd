@@ -57,7 +57,7 @@ inference  params.yaml  result  run-info  runtime.log  simulation  train
 
 An example, the simulation run directories may look like:
 ```console
-ls runs/experiment-170323-091525/simulation/run-08843adb-65e1-47f0-b0f8-34821aa45923:
+$ ls runs/experiment-170323-091525/simulation/run-08843adb-65e1-47f0-b0f8-34821aa45923:
 1FME-unfolded.pdb  contact_map.npy  input.yaml  output.yaml  rmsd.npy  sim.dcd  sim.log
 ```
 - `1FME-unfolded.pdb` the PDB file used to start the simulation
