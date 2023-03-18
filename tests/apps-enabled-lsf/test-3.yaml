@@ -1,0 +1,20 @@
+simulation_input_dir: data/1fme
+num_workers: 6
+simulations_per_train: 4
+simulations_per_inference: 1
+num_total_simulations: 15
+
+compute_settings:
+  name: lsf
+  available_accelerators: 6
+
+simulation_settings:
+  simulation_length_ns: 1.0
+  rmsd_reference_pdb: data/1fme/1FME-folded.pdb
+
+train_settings:
+  cvae_settings_yaml: tests/apps-enabled-lsf/cvae-settings.yaml
+
+inference_settings:
+  cvae_settings_yaml: tests/apps-enabled-lsf/cvae-settings.yaml
+  num_outliers: 4
