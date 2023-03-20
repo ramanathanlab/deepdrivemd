@@ -70,6 +70,82 @@ By default the `runs/` directory is ignored by git.
 
 Production runs can be configured and run analogously. See `examples/bba-folding-workstation/` for a detailed example of folding the [1FME](https://www.rcsb.org/structure/1FME) protein. **The YAML files document the configuration settings and explain the use case**.
 
+### Software Interface
+
+Implement a DeepDriveMD workflow with custom MD simulation engines, and AI training/inference methods by inherting from the `DeepDriveMDWorkflow` interface. This workflow implments the `examples/bba-folding-workstation/` example:
+```python
+from deepdrivemd.api import DeepDriveMDWorkflow
+
+class DeepDriveMD_OpenMM_CVAE(DeepDriveMDWorkflow):
+    def __init__(
+        self, simulations_per_train: int, simulations_per_inference: int, **kwargs: Any
+    ) -> None:
+        super().__init__(**kwargs)
+        self.simulations_per_train = simulations_per_train
+        self.simulations_per_inference = simulations_per_inference
+
+        # Make sure there has been at least one training task 
+        # complete before running inference
+        self.model_weights_available: bool = False
+
+        # For batching training/inference inputs
+        self.train_input = CVAETrainInput(contact_map_paths=[], rmsd_paths=[])
+        self.inference_input = CVAEInferenceInput(
+            contact_map_paths=[], rmsd_paths=[], model_weight_path=Path()
+        )
+
+        # Communicate results between agents
+        self.simulation_input_queue: Queue[MDSimulationInput] = Queue()
+
+    def simulate(self) -> None:
+        """Submit either a new outlier to simulate, or a starting conformer."""
+        with self.simulation_govenor:
+            if not self.simulation_input_queue.empty():
+                inputs = self.simulation_input_queue.get()
+            else:
+                inputs = MDSimulationInput(sim_dir=next(self.simulation_input_dirs))
+
+        self.submit_task("simulation", inputs)
+
+    def train(self) -> None:
+        """Submit a new training task."""
+        self.submit_task("train", self.train_input)
+
+    def inference(self) -> None:
+        """Submit a new inference task once model weights are available."""
+        while not self.model_weights_available:
+            time.sleep(1)
+
+        self.submit_task("inference", self.inference_input)
+
+    def handle_simulation_output(self, output: MDSimulationOutput) -> None:
+        """When a simulation finishes, decide to train a new model or infer outliers."""
+        # Collect simulation results
+        self.train_input.append(output.contact_map_path, output.rmsd_path)
+        self.inference_input.append(output.contact_map_path, output.rmsd_path)
+
+        # Signal train/inference tasks
+        num_sims = len(self.train_input)
+        if num_sims % self.simulations_per_train == 0:
+            self.run_training.set()
+
+        if num_sims % self.simulations_per_inference == 0:
+            self.run_inference.set()
+
+    def handle_train_output(self, output: CVAETrainOutput) -> None:
+        """When training finishes, update the model weights to use for inference."""
+        self.inference_input.model_weight_path = output.model_weight_path
+        self.model_weights_available = True
+
+    def handle_inference_output(self, output: CVAEInferenceOutput) -> None:
+        """When inference finishes, update the simulation queue with the latest outliers."""
+        with self.simulation_govenor:
+            self.simulation_input_queue.queue.clear() # Remove old outliers
+            for sim_dir, sim_frame in zip(output.sim_dirs, output.sim_frames):
+                self.simulation_input_queue.put(
+                    MDSimulationInput(sim_dir=sim_dir, sim_frame=sim_frame)
+                )
+```
 
 ## Contributing
 
