@@ -38,7 +38,7 @@ make install
 
 The workflow can be tested on a workstation (a system with a few GPUs) via:
 ```console
-python -m deepdrivemd.workflows.openmm_cvae -c tests/apps-enabled-workstation/test.yaml
+python -m deepdrivemd.folding_openmm_cvae.run -c tests/apps-enabled-workstation/test.yaml
 ```
 This will generate an output directory for the run with logs, results, and task specific output folders.
 

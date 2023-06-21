@@ -13,24 +13,24 @@ from deepdrivemd.api import (
     SimulationCountDoneCallback,
     TimeoutDoneCallback,
 )
-from deepdrivemd.apps.cvae_inference import (
+from deepdrivemd.folding_openmm_cvae.inference import (
     CVAEInferenceInput,
     CVAEInferenceOutput,
     CVAEInferenceSettings,
 )
-from deepdrivemd.apps.cvae_train import (
-    CVAETrainInput,
-    CVAETrainOutput,
-    CVAETrainSettings,
+from deepdrivemd.folding_openmm_cvae.run import (
+    DeepDriveMD_OpenMM_CVAE,
+    ExperimentSettings,
 )
-from deepdrivemd.apps.openmm_simulation import (
+from deepdrivemd.folding_openmm_cvae.simulation import (
     MDSimulationInput,
     MDSimulationOutput,
     MDSimulationSettings,
 )
-from deepdrivemd.workflows.openmm_cvae import (
-    DeepDriveMD_OpenMM_CVAE,
-    ExperimentSettings,
+from deepdrivemd.folding_openmm_cvae.train import (
+    CVAETrainInput,
+    CVAETrainOutput,
+    CVAETrainSettings,
 )
 
 

@@ -19,20 +19,20 @@ from deepdrivemd.api import (  # InferenceCountDoneCallback,
     SimulationCountDoneCallback,
     TimeoutDoneCallback,
 )
-from deepdrivemd.apps.cvae_inference import (
+from deepdrivemd.folding_openmm_cvae.inference import (
     CVAEInferenceInput,
     CVAEInferenceOutput,
     CVAEInferenceSettings,
 )
-from deepdrivemd.apps.cvae_train import (
-    CVAETrainInput,
-    CVAETrainOutput,
-    CVAETrainSettings,
-)
-from deepdrivemd.apps.openmm_simulation import (
+from deepdrivemd.folding_openmm_cvae.simulation import (
     MDSimulationInput,
     MDSimulationOutput,
     MDSimulationSettings,
+)
+from deepdrivemd.folding_openmm_cvae.train import (
+    CVAETrainInput,
+    CVAETrainOutput,
+    CVAETrainSettings,
 )
 from deepdrivemd.parsl import ComputeSettingsTypes
 
@@ -40,7 +40,7 @@ from deepdrivemd.parsl import ComputeSettingsTypes
 def run_simulation(
     input_data: MDSimulationInput, config: MDSimulationSettings
 ) -> MDSimulationOutput:
-    from deepdrivemd.apps.openmm_simulation.app import MDSimulationApplication
+    from deepdrivemd.folding_openmm_cvae.simulation.app import MDSimulationApplication
 
     app = MDSimulationApplication(config)
     output_data = app.run(input_data)
@@ -48,7 +48,7 @@ def run_simulation(
 
 
 def run_train(input_data: CVAETrainInput, config: CVAETrainSettings) -> CVAETrainOutput:
-    from deepdrivemd.apps.cvae_train.app import CVAETrainApplication
+    from deepdrivemd.folding_openmm_cvae.train.app import CVAETrainApplication
 
     app = CVAETrainApplication(config)
     output_data = app.run(input_data)
@@ -58,7 +58,7 @@ def run_train(input_data: CVAETrainInput, config: CVAETrainSettings) -> CVAETrai
 def run_inference(
     input_data: CVAEInferenceInput, config: CVAEInferenceSettings
 ) -> CVAEInferenceOutput:
-    from deepdrivemd.apps.cvae_inference.app import CVAEInferenceApplication
+    from deepdrivemd.folding_openmm_cvae.inference.app import CVAEInferenceApplication
 
     app = CVAEInferenceApplication(config)
     output_data = app.run(input_data)
@@ -166,9 +166,6 @@ class ExperimentSettings(DeepDriveMDSettings):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("-c", "--config", required=True)
-    parser.add_argument(
-        "-t", "--test", action="store_true", help="Test Mock Application"
-    )
     args = parser.parse_args()
     cfg = ExperimentSettings.from_yaml(args.config)
     cfg.dump_yaml(cfg.run_dir / "params.yaml")
