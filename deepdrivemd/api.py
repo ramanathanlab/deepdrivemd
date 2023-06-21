@@ -92,10 +92,6 @@ class DeepDriveMDSettings(BaseSettings):
     """Main directory to organize all experiment run directories."""
     run_dir: Path
     """Path this particular experiment writes to (set automatically)."""
-    redishost: str = "127.0.0.1"
-    """Address at which the redis server can be reached."""
-    redisport: int = 6379
-    """Port on which redis is available."""
     simulation_input_dir: Path
     """Nested directory storing initial simulation start files,
     e.g. pdb_dir/system1/, pdb_dir/system2/, ..., where system<i> might store
