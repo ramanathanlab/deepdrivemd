@@ -33,7 +33,7 @@ def _resolve_path_exists(value: Optional[Path]) -> Optional[Path]:
     return p
 
 
-def path_validator(field: str) -> classmethod:
+def path_validator(field: str) -> classmethod:  # type: ignore
     decorator = validator(field, allow_reuse=True)
     _validator = decorator(_resolve_path_exists)
     return _validator
@@ -50,7 +50,7 @@ class BaseSettings(_BaseSettings):
     def from_yaml(cls: Type[_T], filename: PathLike) -> _T:
         with open(filename) as fp:
             raw_data = yaml.safe_load(fp)
-        return cls(**raw_data)  # type: ignore
+        return cls(**raw_data)
 
 
 class ApplicationSettings(BaseSettings):
@@ -342,7 +342,9 @@ class DeepDriveMDWorkflow(BaseThinker):  # type: ignore[misc]
         if not result.success:
             # TODO (wardlt): Should we submit a new simulation if one fails?
             # (braceal): Yes, I think so. I think we can move this check to after submit_task()
-            return self.logger.warning("Bad simulation result")
+            self.logger.warning("Bad simulation result")
+            return
+
         self.simulations_completed += 1
 
         # This function is running an implicit while-true loop
@@ -372,7 +374,8 @@ class DeepDriveMDWorkflow(BaseThinker):  # type: ignore[misc]
 
         self.log_result(result, "train")
         if not result.success:
-            return self.logger.warning("Bad train result")
+            self.logger.warning("Bad train result")
+            return
 
         # Process the training output
         self.handle_train_output(result.value)
@@ -392,7 +395,8 @@ class DeepDriveMDWorkflow(BaseThinker):  # type: ignore[misc]
 
         self.log_result(result, "inference")
         if not result.success:
-            return self.logger.warning("Bad inference result")
+            self.logger.warning("Bad inference result")
+            return
 
         # Process the inference output
         self.handle_inference_output(result.value)

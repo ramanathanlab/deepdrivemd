@@ -4,6 +4,8 @@ from typing import Tuple
 import MDAnalysis
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
+import parmed as pmd
 
 try:
     import openmm.app as app
@@ -11,19 +13,44 @@ try:
 except ImportError:
     pass  # For testing purposes
 
-from MDAnalysis.analysis import align, distances, rms
+from MDAnalysis.analysis import distances
 
-from deepdrivemd.folding_openmm_cvae.simulation import (
+from deepdrivemd.ligand_unbinding_openmm_cvae.simulation import (
     MDSimulationInput,
     MDSimulationOutput,
     MDSimulationSettings,
 )
 from deepdrivemd.utils.openmm import OpenMMSimulationApplication
 
-# TODO: A more efficient (but complex) implementation could background the
-# contact map and RMSD computation using openmm reporters using a process pool.
-# This would overlap the simulations and analysis so they finish at roughly
-# the same time.
+
+def get_force_LJ_atomgroup(atmgrp1, atmgrp2, dists) -> float:
+    # get parameters
+    sigma_i = np.array([atom.sigma for atom in atmgrp1])
+    sigma_j = np.array([atom.sigma for atom in atmgrp2])
+    eps_i = np.array([atom.epsilon for atom in atmgrp1])
+    eps_j = np.array([atom.epsilon for atom in atmgrp2])
+    # mesh parameters
+    sigma_i, sigma_j = np.meshgrid(sigma_i, sigma_j, sparse=True)
+    eps_i, eps_j = np.meshgrid(eps_i, eps_j, sparse=True)
+    # combination
+    sigma_ij = (sigma_i + sigma_j) / 2
+    eps_ij = (eps_i * eps_j) ** 0.5
+    c_ij = sigma_ij / dists
+    v_lj = 4 * eps_ij * (c_ij**12 - c_ij**6)
+    return np.sum(v_lj)
+
+
+def get_force_Coul_atomgroup(atmgrp1, atmgrp2, dists) -> float:
+    f = 139.935485
+    # get parameters
+    q_i = np.array([atom.charge for atom in atmgrp1])
+    q_j = np.array([atom.charge for atom in atmgrp2])
+    # mesh parameters
+    q_i, q_j = np.meshgrid(q_i, q_j, sparse=True)
+    # combination
+    q_ij = q_i * q_j
+    v_coul = f * q_ij / dists
+    return np.sum(v_coul)
 
 
 class MDSimulationApplication(OpenMMSimulationApplication):
@@ -46,6 +73,7 @@ class MDSimulationApplication(OpenMMSimulationApplication):
 
         # Collect an optional topology file
         top_file = self.copy_topology(input_data.sim_dir)
+        assert top_file is not None
 
         # Initialize an OpenMM simulation
         sim = self.configure_simulation(
@@ -87,17 +115,17 @@ class MDSimulationApplication(OpenMMSimulationApplication):
         # Run simulation
         sim.step(nsteps)
 
-        # Analyze simulation and collect contact maps and RMSD to native state
-        contact_maps, rmsds = self.analyze_simulation(pdb_file, traj_file)
+        # Analyze simulation and collect contact maps and PLC interaction energy
+        contact_maps, energy_df = self.analyze_simulation(pdb_file, top_file, traj_file)
 
         # Save simulation analysis
         np.save(self.workdir / "contact_map.npy", contact_maps)
-        np.save(self.workdir / "rmsd.npy", rmsds)
+        energy_df.to_csv(self.workdir / "energy.csv")
 
         # Return simulation analysis outputs
         output_data = MDSimulationOutput(
             contact_map_path=self.persistent_dir / "contact_map.npy",
-            rmsd_path=self.persistent_dir / "rmsd.npy",
+            energy_path=self.persistent_dir / "energy.csv",
         )
 
         # Log the output data
@@ -107,40 +135,54 @@ class MDSimulationApplication(OpenMMSimulationApplication):
         return output_data
 
     def analyze_simulation(
-        self, pdb_file: Path, traj_file: Path
-    ) -> Tuple["npt.ArrayLike", "npt.ArrayLike"]:
-        """Analyze trajectory and return a contact map and
-        the RMSD to native state for each frame."""
+        self, pdb_file: Path, top_file: Path, traj_file: Path
+    ) -> Tuple["npt.ArrayLike", pd.DataFrame]:
+        mda_u = MDAnalysis.Universe(pdb_file, traj_file)
+        top = pmd.load_file(str(top_file), xyz=pdb_file)
 
-        # Compute contact maps, rmsd, etc in bulk
-        mda_u = MDAnalysis.Universe(str(pdb_file), str(traj_file))
-        ref_u = MDAnalysis.Universe(str(self.config.rmsd_reference_pdb))
-        # Align trajectory to compute accurate RMSD
-        align.AlignTraj(
-            mda_u, ref_u, select=self.config.mda_selection, in_memory=True
-        ).run()
-        # Get atomic coordinates of reference atoms
-        ref_positions = ref_u.select_atoms(self.config.mda_selection).positions.copy()
-        atoms = mda_u.select_atoms(self.config.mda_selection)
+        # Setup energy calculation
+        protein_atoms = mda_u.select_atoms(self.config.protein_selection)
+        ligand_atoms = mda_u.select_atoms(self.config.ligand_selection)
+        protein_top = [top.atoms[i] for i in protein_atoms.indices]
+        ligand_top = [top.atoms[i] for i in ligand_atoms.indices]
+
+        # Setup contact map calculation
+        contact_atoms = mda_u.select_atoms(self.config.contact_selection)
         box = mda_u.atoms.dimensions
-        rows, cols, rmsds = [], [], []
-        for _ in mda_u.trajectory:
-            positions = atoms.positions
+
+        rows, cols, energies = [], [], []
+        for ts in mda_u.trajectory:
             # Compute contact map of current frame (scipy lil_matrix form)
             cm = distances.contact_matrix(
-                positions, self.config.cutoff_angstrom, box=box, returntype="sparse"
+                contact_atoms.positions,
+                self.config.cutoff_angstrom,
+                box=box,
+                returntype="sparse",
             )
             coo = cm.tocoo()
             rows.append(coo.row.astype("int16"))
             cols.append(coo.col.astype("int16"))
 
-            # Compute RMSD
-            rmsd = rms.rmsd(positions, ref_positions, center=True, superposition=True)
-            rmsds.append(rmsd)
+            # Compute energies
+            dist_map = distances.distance_array(
+                protein_atoms.positions, ligand_atoms.positions, box=ts.dimensions
+            )
+            v_lj = get_force_LJ_atomgroup(protein_top, ligand_top, dist_map)
+            v_coul = get_force_Coul_atomgroup(protein_top, ligand_top, dist_map)
+
+            energies.append(
+                {
+                    "frame": ts.frame,
+                    "V_LJ": v_lj,
+                    "V_coul": v_coul,
+                    "V_total": v_lj + v_coul,
+                }
+            )
 
         # Save simulation analysis results
+        energy_df = pd.DataFrame(energies)
         contact_maps = np.array(
             [np.concatenate(row_col) for row_col in zip(rows, cols)], dtype=object
         )
 
-        return contact_maps, rmsds
+        return contact_maps, energy_df

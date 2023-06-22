@@ -1,4 +1,4 @@
-mypy==0.910 # workaround https://github.com/samuelcolvin/pydantic/issues/3562
+mypy==0.981
 black[jupyter]
 flake8
 pytest

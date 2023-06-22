@@ -7,12 +7,12 @@ from mdlearn.nn.models.vae.symmetric_conv2d_vae import SymmetricConv2dVAETrainer
 from sklearn.neighbors import LocalOutlierFactor
 
 from deepdrivemd.api import Application
-from deepdrivemd.folding_openmm_cvae.inference import (
+from deepdrivemd.ligand_unbinding_openmm_cvae.inference import (
     CVAEInferenceInput,
     CVAEInferenceOutput,
     CVAEInferenceSettings,
 )
-from deepdrivemd.folding_openmm_cvae.train import CVAESettings
+from deepdrivemd.ligand_unbinding_openmm_cvae.train import CVAESettings
 
 
 class CVAEInferenceApplication(Application):
@@ -26,14 +26,14 @@ class CVAEInferenceApplication(Application):
         contact_maps = np.concatenate(
             [np.load(p, allow_pickle=True) for p in input_data.contact_map_paths]
         )
-        _rmsds = [np.load(p) for p in input_data.rmsd_paths]
-        rmsds = np.concatenate(_rmsds)
-        lengths = [len(d) for d in _rmsds]  # Number of frames in each simulation
+        _energies = [pd.DataFrame(p)["V_total"].values for p in input_data.energy_paths]
+        energies = np.concatenate(_energies)
+        lengths = [len(d) for d in _energies]  # Number of frames in each simulation
         sim_frames = np.concatenate([np.arange(i) for i in lengths])
         sim_dirs = np.concatenate(
-            [[str(p.parent)] * l for p, l in zip(input_data.rmsd_paths, lengths)]
+            [[str(p.parent)] * l for p, l in zip(input_data.energy_paths, lengths)]
         )
-        assert len(rmsds) == len(sim_frames) == len(sim_dirs)
+        assert len(energies) == len(sim_frames) == len(sim_dirs)
 
         # Initialize the model
         cvae_settings = CVAESettings.from_yaml(self.config.cvae_settings_yaml).dict()
@@ -56,22 +56,29 @@ class CVAEInferenceApplication(Application):
         clf = LocalOutlierFactor(n_jobs=self.config.sklearn_num_jobs)
         clf.fit(embeddings)
 
-        # Get best scores and corresponding indices where smaller
-        # RMSDs are closer to folded state and smaller LOF score
-        # is more of an outlier
+        # Get best scores and corresponding indices where larger
+        # energies (but still negative) are closer to unbound
+        # state and smaller LOF score is more of an outlier
         df = (
             pd.DataFrame(
                 {
-                    "rmsd": rmsds,
+                    "energy": energies,
                     "lof": clf.negative_outlier_factor_,
                     "sim_dirs": sim_dirs,
                     "sim_frames": sim_frames,
                 }
             )
-            .sort_values("lof")  # First sort by lof score
-            .head(self.config.num_outliers)  # Take the smallest num_outliers lof scores
-            .sort_values("rmsd")  # Finally, sort the smallest lof scores by rmsd
+            # First sort by lof score
+            .sort_values("lof")
+            # Take the smallest num_outliers lof scores
+            .head(self.config.num_outliers)
+            # Sort the smallest lof scores by energy s.t.
+            # larger energies are ordered at the head of the dataframe
+            .sort_values("energy", ascending=False)
         )
+
+        # Make sure only negative energies are considered
+        df = df[df["energy"] < 0]
 
         df.to_csv(self.workdir / "outliers.csv")
 

@@ -5,7 +5,7 @@ from mdlearn.nn.models.vae.symmetric_conv2d_vae import SymmetricConv2dVAETrainer
 from natsort import natsorted
 
 from deepdrivemd.api import Application
-from deepdrivemd.folding_openmm_cvae.train import (
+from deepdrivemd.ligand_unbinding_openmm_cvae.train import (
     CVAESettings,
     CVAETrainInput,
     CVAETrainOutput,
@@ -34,11 +34,13 @@ class CVAETrainApplication(Application):
         contact_maps = np.concatenate(
             [np.load(p, allow_pickle=True) for p in input_data.contact_map_paths]
         )
-        rmsds = np.concatenate([np.load(p) for p in input_data.rmsd_paths])
+        energies = np.concatenate(
+            [pd.DataFrame(p)["V_total"].values for p in input_data.energy_paths]
+        )
 
         # Train model
         model_dir = self.workdir / "model"  # Need to create new directory
-        trainer.fit(X=contact_maps, scalars={"rmsd": rmsds}, output_path=model_dir)
+        trainer.fit(X=contact_maps, scalars={"energy": energies}, output_path=model_dir)
 
         # Log the loss
         pd.DataFrame(trainer.loss_curve_).to_csv(model_dir / "loss.csv")
