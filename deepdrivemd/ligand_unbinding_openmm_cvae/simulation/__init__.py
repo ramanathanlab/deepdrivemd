@@ -21,11 +21,11 @@ class MDSimulationSettings(ApplicationSettings):
     dt_ps: float = 0.002
     temperature_kelvin: float = 310.0
     heat_bath_friction_coef: float = 1.0
-    protein_selection: str = "protein and name CA"
+    protein_selection: str = "protein"
     """MDAnalysis selection to compute protein ligand energy."""
     ligand_selection: str
     """MDAnalysis selection to compute protein ligand energy."""
-    contact_selection: str
+    contact_selection: str = "protein and name CA"
     """MDAnalysis selection to compute contact map."""
     cutoff_angstrom: float = 8.0
     """Atoms within this cutoff are said to be in contact."""
