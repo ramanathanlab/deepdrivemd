@@ -137,8 +137,8 @@ class MDSimulationApplication(OpenMMSimulationApplication):
     def analyze_simulation(
         self, pdb_file: Path, top_file: Path, traj_file: Path
     ) -> Tuple["npt.ArrayLike", pd.DataFrame]:
-        mda_u = MDAnalysis.Universe(pdb_file, traj_file)
-        top = pmd.load_file(str(top_file), xyz=pdb_file)
+        mda_u = MDAnalysis.Universe(str(pdb_file), str(traj_file))
+        top = pmd.load_file(str(top_file), xyz=str(pdb_file))
 
         # Setup energy calculation
         protein_atoms = mda_u.select_atoms(self.config.protein_selection)
