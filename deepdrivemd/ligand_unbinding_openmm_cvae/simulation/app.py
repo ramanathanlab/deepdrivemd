@@ -165,7 +165,7 @@ class MDSimulationApplication(OpenMMSimulationApplication):
 
             # Compute energies
             dist_map = distances.distance_array(
-                protein_atoms.positions, ligand_atoms.positions, box=ts.dimensions
+                ligand_atoms.positions, protein_atoms.positions, box=ts.dimensions
             )
             v_lj = get_force_LJ_atomgroup(protein_top, ligand_top, dist_map)
             v_coul = get_force_Coul_atomgroup(protein_top, ligand_top, dist_map)
