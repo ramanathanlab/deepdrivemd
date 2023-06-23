@@ -120,7 +120,7 @@ class MDSimulationApplication(OpenMMSimulationApplication):
 
         # Save simulation analysis
         np.save(self.workdir / "contact_map.npy", contact_maps)
-        energy_df.to_csv(self.workdir / "energy.csv")
+        energy_df.to_csv(self.workdir / "energy.csv", index=False)
 
         # Return simulation analysis outputs
         output_data = MDSimulationOutput(
@@ -170,14 +170,7 @@ class MDSimulationApplication(OpenMMSimulationApplication):
             v_lj = get_force_LJ_atomgroup(protein_top, ligand_top, dist_map)
             v_coul = get_force_Coul_atomgroup(protein_top, ligand_top, dist_map)
 
-            energies.append(
-                {
-                    "frame": ts.frame,
-                    "V_LJ": v_lj,
-                    "V_coul": v_coul,
-                    "V_total": v_lj + v_coul,
-                }
-            )
+            energies.append({"V_LJ": v_lj, "V_coul": v_coul, "V_total": v_lj + v_coul})
 
         # Save simulation analysis results
         energy_df = pd.DataFrame(energies)
