@@ -35,7 +35,7 @@ class CVAETrainApplication(Application):
             [np.load(p, allow_pickle=True) for p in input_data.contact_map_paths]
         )
         energies = np.concatenate(
-            [pd.DataFrame(p)["V_total"].values for p in input_data.energy_paths]
+            [pd.read_csv(p)["V_total"].values for p in input_data.energy_paths]
         )
 
         # Train model

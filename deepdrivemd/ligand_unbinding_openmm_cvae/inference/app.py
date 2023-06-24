@@ -26,7 +26,7 @@ class CVAEInferenceApplication(Application):
         contact_maps = np.concatenate(
             [np.load(p, allow_pickle=True) for p in input_data.contact_map_paths]
         )
-        _energies = [pd.DataFrame(p)["V_total"].values for p in input_data.energy_paths]
+        _energies = [pd.read_csv(p)["V_total"].values for p in input_data.energy_paths]
         energies = np.concatenate(_energies)
         lengths = [len(d) for d in _energies]  # Number of frames in each simulation
         sim_frames = np.concatenate([np.arange(i) for i in lengths])
