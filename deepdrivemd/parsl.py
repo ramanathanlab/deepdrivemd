@@ -139,6 +139,8 @@ class TahomaSettings(BaseComputeSettings):
 
     name: Literal["tahoma"] = "tahoma"  # type: ignore[assignment]
     """Name of the platform."""
+    account: str
+    """The account to charge compute to."""
     walltime: str = "01:00:00"
     """Walltime."""
     num_nodes: int = 1
@@ -161,6 +163,7 @@ class TahomaSettings(BaseComputeSettings):
                     available_accelerators=2,
                     provider=SlurmProvider(
                         partition="analysis",
+                        account=self.account,
                         nodes_per_block=self.num_nodes,  # number of nodes
                         init_blocks=1,
                         max_blocks=1,
