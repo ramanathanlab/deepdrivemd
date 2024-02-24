@@ -1,5 +1,5 @@
 # This test case is for running the DeepDriveMD on Tahoma
-# using a single node with 2 V100 GPUs.
+# using two nodes, each with 2 V100 GPUs.
 
 simulation_input_dir: data/1fme
 num_workers: 2 # There are 2 V100 GPUs on each Tahoma node
@@ -10,7 +10,7 @@ num_total_simulations: 10
 compute_settings:
   name: tahoma
   account: emsla60288
-  num_nodes: 1
+  num_nodes: 2
   walltime: 01:00:00
   worker_init: "conda activate deepdrivemd"
 
