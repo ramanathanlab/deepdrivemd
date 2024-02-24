@@ -2,6 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Literal, Sequence, Tuple, Union
 
+from parsl.addresses import address_by_hostname
 from parsl.config import Config
 from parsl.executors import HighThroughputExecutor
 from parsl.launchers import MpiExecLauncher
@@ -152,9 +153,11 @@ class TahomaSettings(BaseComputeSettings):
             run_dir=str(run_dir),
             executors=[
                 HighThroughputExecutor(
+                    address=address_by_hostname(),
                     label=self.label,
                     worker_debug=False,
-                    cores_per_worker=16.0,  # each worker uses a full node
+                    # Each worker uses half of the available cores
+                    cores_per_worker=16.0,
                     available_accelerators=2,
                     provider=SlurmProvider(
                         partition="analysis",
