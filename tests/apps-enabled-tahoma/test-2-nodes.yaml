@@ -2,7 +2,7 @@
 # using two nodes, each with 2 V100 GPUs.
 
 simulation_input_dir: data/1fme
-num_workers: 2 # There are 2 V100 GPUs on each Tahoma node
+num_workers: 4 # There are 2 V100 GPUs on each Tahoma node
 simulations_per_train: 1
 simulations_per_inference: 2
 num_total_simulations: 10
@@ -15,7 +15,7 @@ compute_settings:
   worker_init: "conda activate deepdrivemd"
 
 simulation_settings:
-  simulation_length_ns: 0.5
+  simulation_length_ns: 1
   rmsd_reference_pdb: data/1fme/1FME-folded.pdb
 
 train_settings:

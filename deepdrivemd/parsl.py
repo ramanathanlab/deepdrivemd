@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Literal, Sequence, Tuple, Union
 
-from parsl.addresses import address_by_hostname
+from parsl.addresses import address_by_hostname, address_by_interface
 from parsl.config import Config
 from parsl.executors import HighThroughputExecutor
 from parsl.launchers import MpiExecLauncher
@@ -155,9 +155,12 @@ class TahomaSettings(BaseComputeSettings):
             run_dir=str(run_dir),
             executors=[
                 HighThroughputExecutor(
-                    address=address_by_hostname(),
+                    address=address_by_interface("ib0"),
+                    worker_debug=True,
+                    max_workers=2,
+                    #address=address_by_hostname(),
                     label=self.label,
-                    worker_debug=False,
+                    #worker_debug=False,
                     # Each worker uses half of the available cores
                     cores_per_worker=16.0,
                     available_accelerators=2,
@@ -170,7 +173,9 @@ class TahomaSettings(BaseComputeSettings):
                         scheduler_options="",
                         cmd_timeout=60,
                         walltime=self.walltime,
-                        launcher=MpiExecLauncher(),
+                        launcher=MpiExecLauncher(
+                            overrides='--ppn 1',
+                        ),
                         # requires conda environment with parsl installed
                         worker_init=self.worker_init,
                     ),
