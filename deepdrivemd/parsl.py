@@ -4,7 +4,8 @@ from typing import Literal, Sequence, Tuple, Union
 
 from parsl.config import Config
 from parsl.executors import HighThroughputExecutor
-from parsl.providers import LocalProvider, LSFProvider
+from parsl.launchers import MpiExecLauncher
+from parsl.providers import LocalProvider, LSFProvider, SlurmProvider
 
 from deepdrivemd.api import BaseSettings, PathLike
 
@@ -128,4 +129,50 @@ class LSFStJudeSettings(BaseComputeSettings):
         )
 
 
-ComputeSettingsTypes = Union[LocalSettings, WorkstationSettings, LSFStJudeSettings]
+class TahomaSettings(BaseComputeSettings):
+    """Compute settings for Tahoma cluster at PNNL.
+
+    Tahoma user guide:
+    https://www.emsl.pnnl.gov/MSC/UserGuide/tahoma/tahoma_overview.html
+    """
+
+    name: Literal["tahoma"] = "tahoma"  # type: ignore[assignment]
+    """Name of the platform."""
+    walltime: str = "01:00:00"
+    """Walltime."""
+    num_nodes: int = 1
+    """Number of nodes to request."""
+    worker_init: str = ""
+    """How to start a worker. Should load any modules and environments."""
+    label: str = "htex"
+    """Label for the HighThroughputExecutor."""
+
+    def config_factory(self, run_dir: PathLike) -> Config:
+        return Config(
+            run_dir=str(run_dir),
+            executors=[
+                HighThroughputExecutor(
+                    label=self.label,
+                    worker_debug=False,
+                    cores_per_worker=16.0,  # each worker uses a full node
+                    available_accelerators=2,
+                    provider=SlurmProvider(
+                        partition="analysis",
+                        nodes_per_block=self.num_nodes,  # number of nodes
+                        init_blocks=1,
+                        max_blocks=1,
+                        scheduler_options="",
+                        cmd_timeout=60,
+                        walltime=self.walltime,
+                        launcher=MpiExecLauncher(),
+                        # requires conda environment with parsl installed
+                        worker_init=self.worker_init,
+                    ),
+                )
+            ],
+        )
+
+
+ComputeSettingsTypes = Union[
+    LocalSettings, WorkstationSettings, LSFStJudeSettings, TahomaSettings
+]
