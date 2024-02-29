@@ -1,0 +1,108 @@
+# This is an example YAML configuration file for running DeepDriveMD on
+# a small workstation to fold the ntl9 protein. All the data
+# for this workflow is self contained within the repository including
+# folded and unfolded structures. This is the best example to debug with
+# as you can scale the number of GPUs, simulation length, and other settings
+# using this small biomolecular system (39 residues) instead of a larger
+# compute-intensive system. This workflow configuration takes approximately 8
+# hours to run to convergence on 4 V100 GPUs.
+
+# NOTE: There are more parameters that can be configured than are listed
+# here. Please refer to deepdrivemd/api.py:DeepDriveMDSettings for details.
+
+# NOTE: simulation_settings, train_settings, and inference_settings encapsulate
+# specific application parameters suited towards your biomolecular system and
+# machine learning training and inference algorithms. This is meant to be
+# an illustrative example for best practices for configuring your experiments
+# and exposing a convenient YAML interface to the input parameters you would like
+# to tune. You may find that this (or a different) specific deep learning model or simulation
+# script is suited to multiple problems, but DeepDriveMD is flexible and allows you
+# to add your own custom solutions. This workflow is geared towards simulating a system
+# from a starting state to some target, given as a PDB file via simulation_settings:rmsd_reference_pdb.
+# In this case, we are using it to fold the ntl9 protein by minimizing the RMSD to
+# the native state. To start your modelling we recomend using the convolutational
+# variational autoencoder as configured below as a first step. You may need to adjust
+# the inference application if your task can not be cast as an RMSD minimization problem.
+
+
+# The simulation input directory. Should contain subfolders with PDB
+# files (and optional topology files)
+simulation_input_dir: data/ntl9
+# The number of workers to use for all tasks (3 will be used for simulation,
+# 1 will be shared between train/infer tasks)
+num_workers: 4
+# The number of simulations to run between training jobs (all the data produced 
+# throughout the duration of the workflow is used for training)
+simulations_per_train: 6
+# The number of simulations to run between inference jobs (inference is fast,
+# we want to select outliers as quickly as possible)
+simulations_per_inference: 1
+# The total number of simulations to run before the workflow stops (1000 is
+# essentially infinity and requires manually stopping the workflow once
+# convergence is manually confirmed)
+num_total_simulations: 1000
+
+# Compute settings can be configured by refering to deepdrivemd/parsl.py
+# The `name` field specifies what type of system to run on and the subsequent
+# arguments are conditional on the name field (e.g., a cluster may have different
+# configuration than a workstation).
+compute_settings:
+  # Specify we want the workstation parsl configuration
+  name: workstation
+  # Identify which GPUs to assign tasks to. It's generally recommended to first check
+  # nvidia-smi to see which GPUs are available. The numbers below are analogous to
+  # setting CUDA_VISIBLE_DEVICES=1,2,3,4
+  available_accelerators: ["1", "2", "3", "4"]
+
+# The simulation settings as exposed in deepdrivemd/apps/openmm_simulation
+# This application uses OpenMM as a simulation backend and can be changed
+# to suit your modelling needs. To see the full list of tunable parameters,
+# see deepdrivemd/apps/openmm_simulation/__init__.py:MDSimulationSettings
+simulation_settings:
+  # The number of nanoseconds to run each simulation for
+  simulation_length_ns: 10
+  # How often to write a coordinate frame to a DCD file
+  report_interval_ps: 10
+  # The temperature to simulate at
+  temperature_kelvin: 300
+  # The reference PDB with which to compute RMSD of each reported frame to
+  rmsd_reference_pdb: data/ntl9/ntl9_reference.pdb #data/ntl9/folded.pdb
+  # Use all 93 heavy atoms (not just the CA atoms)
+  mda_selection: "protein and name CA"
+  # Cutoff distance to form contact map in the mda_selection.
+  cutoff_angstrom: 8.0
+
+# The training settings for the convolutional variational autoencoder (CVAE).
+# Full documentation and the paper citation which describes the application of
+# the CVAE to contact maps can be found here: https://mdlearn.readthedocs.io/en/latest/pages/_autosummary/mdlearn.nn.models.vae.symmetric_conv2d_vae.html#module-mdlearn.nn.models.vae.symmetric_conv2d_vae
+train_settings:
+  # Here we pass a YAML file containing all the CVAE parameters (documentation included)
+  # This is just to avoid needing to copy and paste paramaters in both the train_settings and inference_settings
+  cvae_settings_yaml: examples/ntl9-folding-workstation/cvae-prod-settings.yaml
+
+# The inference settings. For this workflow, the CVAE is periodically retrained
+# on all the reported frames of the simulations. The most recent CVAE model weights
+# are always used during inference. The inference application is responsible for analyzing
+# the reported simulation frames and selecting a small subset of frames that are
+# deemed biologically "interesting" which are then used to restart the subsequent simulations.
+# The algorithm employed in this application is as follows:
+#   1. Encode all the contact maps into the latent space learned by the CVAE.
+#   2. Run the Local Outlier Factor (LOF) on the latent embeddings: https://scikit-learn.org/stable/auto_examples/neighbors/plot_lof_outlier_detection.html
+#   3. Take the top `num_outliers` outliers which correspond to the most negative LOF score
+#   4. From the top outliers, re-sort them according to their RMSD to simulation_settings:rmsd_reference_pdb
+#   5. Repeat this each call to the inference function analyzing more and more data from the simulations
+#
+# Following this procedure, each time a simulation finishes, the workflow submits a new simulation
+# job using the frame corresponding to the next best outlier with minimal RMSD to the target state.
+# As the workflow progresses, the simulations begin to sample conformers that are closer to the target reference state.
+# To read the inference application logic, please see: deepdrivemd/apps/cvae_inference
+inference_settings:
+  # The same CVAE paratameter file as in train_settings
+  cvae_settings_yaml: examples/ntl9-folding-workstation/cvae-prod-settings.yaml
+  # The number of latent space outliers to consider when picking the minimal RMSD structures
+  num_outliers: 100
+
+# After reading this example and trying out a few configuration changes, you should
+# be able to consider whether your system of interest can be cast as an RMSD
+# minimization problem or whether you need to make a small adjust to the inference
+# script to change which frames should be preffered during simulation restarts.
