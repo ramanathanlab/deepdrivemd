@@ -1,9 +1,9 @@
 """Utilities to build Parsl configurations."""
-from pathlib import Path
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Literal, Sequence, Tuple, Union
 
-from parsl.addresses import address_by_hostname, address_by_interface
+from parsl.addresses import address_by_interface
 from parsl.config import Config
 from parsl.executors import HighThroughputExecutor
 from parsl.launchers import MpiExecLauncher
@@ -153,7 +153,7 @@ class TahomaSettings(BaseComputeSettings):
 
     def config_factory(self, run_dir: PathLike) -> Config:
         # Need to export the PBS_NODEFILE in order for the hostfile to be
-        # correctly populated
+        # correctly populated by Parsl.
         hostfile = Path(run_dir) / "hostfile"
         worker_init = f"""
 echo $SLURM_JOB_NODELIST | sed 's/ta\\[\\([^]]*\\)\\]/\\1/' | tr ',' '\\n' | sed 's/^/ta/' > {hostfile}
@@ -167,24 +167,21 @@ export PBS_NODEFILE={hostfile}
                     address=address_by_interface("ib0"),
                     worker_debug=True,
                     max_workers=2,
-                    #address=address_by_hostname(),
                     label=self.label,
-                    #worker_debug=False,
                     # Each worker uses half of the available cores
                     cores_per_worker=16.0,
                     available_accelerators=2,
                     provider=SlurmProvider(
                         partition="analysis",
                         account=self.account,
-                        nodes_per_block=self.num_nodes,  # number of nodes
+                        nodes_per_block=self.num_nodes,
                         init_blocks=1,
                         max_blocks=1,
-                        scheduler_options='',
-                        #scheduler_options="export PBS_NODEFILE=$SLURM_JOB_NODELIST",
+                        scheduler_options="",
                         cmd_timeout=60,
                         walltime=self.walltime,
                         launcher=MpiExecLauncher(
-                            overrides='--ppn 1',
+                            overrides="--ppn 1",
                         ),
                         # requires conda environment with parsl installed
                         worker_init=worker_init,
