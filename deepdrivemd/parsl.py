@@ -1,4 +1,5 @@
 """Utilities to build Parsl configurations."""
+from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import Literal, Sequence, Tuple, Union
 
@@ -151,6 +152,14 @@ class TahomaSettings(BaseComputeSettings):
     """Label for the HighThroughputExecutor."""
 
     def config_factory(self, run_dir: PathLike) -> Config:
+        # Need to export the PBS_NODEFILE in order for the hostfile to be
+        # correctly populated
+        hostfile = Path(run_dir) / "hostfile"
+        worker_init = f"""
+echo $SLURM_JOB_NODELIST | sed 's/ta\\[\\([^]]*\\)\\]/\\1/' | tr ',' '\\n' | sed 's/^/ta/' > {hostfile}
+export PBS_NODEFILE={hostfile}
+{self.worker_init}
+"""
         return Config(
             run_dir=str(run_dir),
             executors=[
@@ -170,14 +179,15 @@ class TahomaSettings(BaseComputeSettings):
                         nodes_per_block=self.num_nodes,  # number of nodes
                         init_blocks=1,
                         max_blocks=1,
-                        scheduler_options="",
+                        scheduler_options='',
+                        #scheduler_options="export PBS_NODEFILE=$SLURM_JOB_NODELIST",
                         cmd_timeout=60,
                         walltime=self.walltime,
                         launcher=MpiExecLauncher(
                             overrides='--ppn 1',
                         ),
                         # requires conda environment with parsl installed
-                        worker_init=self.worker_init,
+                        worker_init=worker_init,
                     ),
                 )
             ],
