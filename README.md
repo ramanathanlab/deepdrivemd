@@ -1,10 +1,9 @@
 # DeepDriveMD: Coupling streaming AI and HPC ensembles to achieve 100-1000× faster biomolecular simulations
 [DeepDriveMD](https://github.com/DeepDriveMD/DeepDriveMD-pipeline) implemented using [Colmena](https://colmena.readthedocs.io/en/latest/).
 
-The computational motif implemented by DeepDriveMD to support ML/AI-coupled simulations comprises four stages. _Simulation_: Simulations are used to explore possible trajectories of a protein or other biomolecular system; _Aggregation_: Simulation results are preprocessed for training. _Training_: Aggregated trajectories are used to train one or more ML models. _Inference_: Trained ML models are used to identify conformations for subsequent iterations of simulations. 
+This implementation of DeepDriveMD enables ML/AI-coupled simulations using three primary components. _Simulation_: Simulations are used to explore possible trajectories of a protein or other biomolecular system; _Training_: Aggregated trajectories are used to train one or more ML models. _Inference_: Trained ML models are used to identify conformations for subsequent iterations of simulations. A _Thinker_ process orchestrates these components to advance the workflow toward an optimization objective.
 
-<img src="https://user-images.githubusercontent.com/38300604/205099612-e856d68b-a51b-4f92-acdc-240b229f015c.png" width="530" height="400"/>
-
+![DeepDriveMD-Colmena](https://github.com/ramanathanlab/deepdrivemd/assets/38300604/60971c79-b2a5-43fc-b744-9f97beb2e297)
 
 ## Table of Contents
 1. [Installation](#installation)
