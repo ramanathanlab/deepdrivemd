@@ -1,0 +1,24 @@
+# Parameters for a convolutional autoencoder as implemented in the mdlearn package.
+# For additional documentation on the input parameters, see here:
+# https://mdlearn.readthedocs.io/en/latest/pages/_autosummary/mdlearn.nn.models.vae.symmetric_conv2d_vae.html#mdlearn.nn.models.vae.symmetric_conv2d_vae.SymmetricConv2dVAETrainer
+input_shape: [1, 28, 28] # Contact matrix shape, in this case the number of residues in BBA.
+filters: [16, 16, 16, 16] # The convolution filters to use (should be same number as kernels and strides)
+kernels: [3, 3, 3, 3] # The convolution kernels to use
+strides: [1, 1, 1, 2] # The convolution strides to use
+affine_widths: [128] # The number of neurons in the linear layers (should be same number as affine_dropouts) 
+affine_dropouts: [0.5] # The dropout to use in the linear layers
+latent_dim: 3 # The latent dimension of the autoencoder
+lambda_rec: 1.0 # How much to weight the reconstruction loss vs the KL divergence
+num_data_workers: 4 # The number of parallel data workers for loading data (performance tuning)
+prefetch_factor: 2 # How many batches each data worker should prefetch (performance tuning)
+batch_size: 64 # The batch size to use during training
+device: cuda # The device to train/infer with (cuda or cpu)
+optimizer_name: RMSprop # The optimizer used to train the model
+optimizer_hparams: # See the torch documentation for the above optimizer for details: https://pytorch.org/docs/stable/optim.html
+    lr: 0.001 # Learning rate for the optimizer
+    weight_decay: 0.00001 # Weight decay for the optimizer
+epochs: 20 # The number of epochs to train for, smaller systems generally need fewer epochs
+checkpoint_log_every: 20 # How often to log a model weight checkpoint file (we only use the last one logged, so set to number of epochs)
+plot_log_every: 20 # How often to log a plot of the autoenoder latent space (helpful for debugging the model -- clustering should be visually apparent)
+plot_n_samples: 5000 # The number of samples to plot
+plot_method: raw # Plot the "raw" latent coordinates in 3D, "PCA" of the embeddings, "TSNE" of the embeddings, etc. See https://mdlearn.readthedocs.io/en/latest/pages/_autosummary/mdlearn.visualize.html

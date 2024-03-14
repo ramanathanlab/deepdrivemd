@@ -2,9 +2,11 @@
 from abc import ABC, abstractmethod
 from typing import Literal, Sequence, Tuple, Union
 
+from parsl.addresses import address_by_interface
 from parsl.config import Config
 from parsl.executors import HighThroughputExecutor
-from parsl.providers import LocalProvider, LSFProvider
+from parsl.launchers import MpiExecLauncher
+from parsl.providers import LocalProvider, LSFProvider, PBSProProvider
 
 from deepdrivemd.api import BaseSettings, PathLike
 
@@ -128,4 +130,88 @@ class LSFStJudeSettings(BaseComputeSettings):
         )
 
 
-ComputeSettingsTypes = Union[LocalSettings, WorkstationSettings, LSFStJudeSettings]
+class PolarisSettings(BaseComputeSettings):
+    """Polaris@ALCF settings.
+
+    See here for details: https://docs.alcf.anl.gov/polaris/workflows/parsl/
+    """
+
+    name: Literal["polaris"] = "polaris"  # type: ignore[assignment]
+    label: str = "htex"
+
+    num_nodes: int = 1
+    """Number of nodes to request"""
+    worker_init: str = ""
+    """How to start a worker. Should load any modules and environments."""
+    scheduler_options: str = "#PBS -l filesystems=home:eagle:grand"
+    """PBS directives, pass -J for array jobs."""
+    account: str
+    """The account to charge compute to."""
+    queue: str
+    """Which queue to submit jobs to, will usually be prod."""
+    walltime: str
+    """Maximum job time."""
+    cpus_per_node: int = 32
+    """Up to 64 with multithreading."""
+    cores_per_worker: float = 8
+    """Number of cores per worker. Evenly distributed between GPUs."""
+    available_accelerators: int = 4
+    """Number of GPU to use."""
+    retries: int = 1
+    """Number of retries upon failure."""
+
+    def get_config(self, run_dir: PathLike) -> Config:
+        """Create a parsl configuration for running on Polaris@ALCF.
+
+        We will launch 4 workers per node, each pinned to a different GPU.
+
+        Parameters
+        ----------
+        run_dir: PathLike
+            Directory in which to store Parsl run files.
+        """
+        return Config(
+            executors=[
+                HighThroughputExecutor(
+                    label=self.label,
+                    heartbeat_period=15,
+                    heartbeat_threshold=120,
+                    worker_debug=True,
+                    # available_accelerators will override settings
+                    # for max_workers
+                    available_accelerators=self.available_accelerators,
+                    cores_per_worker=self.cores_per_worker,
+                    address=address_by_interface("bond0"),
+                    cpu_affinity="block-reverse",
+                    prefetch_capacity=0,
+                    provider=PBSProProvider(
+                        launcher=MpiExecLauncher(
+                            bind_cmd="--cpu-bind",
+                            overrides="--depth=64 --ppn 1",
+                        ),
+                        account=self.account,
+                        queue=self.queue,
+                        select_options="ngpus=4",
+                        # PBS directives: for array jobs pass '-J' option
+                        scheduler_options=self.scheduler_options,
+                        # Command to be run before starting a worker, such as:
+                        worker_init=self.worker_init,
+                        # number of compute nodes allocated for each block
+                        nodes_per_block=self.num_nodes,
+                        init_blocks=1,
+                        min_blocks=0,
+                        max_blocks=1,  # Increase to have more parallel jobs
+                        cpus_per_node=self.cpus_per_node,
+                        walltime=self.walltime,
+                    ),
+                ),
+            ],
+            run_dir=str(run_dir),
+            retries=self.retries,
+            app_cache=True,
+        )
+
+
+ComputeSettingsTypes = Union[
+    LocalSettings, WorkstationSettings, LSFStJudeSettings, PolarisSettings
+]
