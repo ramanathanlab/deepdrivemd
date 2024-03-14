@@ -23,6 +23,18 @@
 # variational autoencoder as configured below as a first step. You may need to adjust
 # the inference application if your task can not be cast as an RMSD minimization problem.
 
+# To install DeepDriveMD on Polaris, first request an interactive node, and then run:
+# module load conda/2023-10-04
+# conda create -n deepdrivemd python=3.9
+# mamba install pytorch pytorch-cuda=11.8 -c pytorch -c nvidia -y
+# mamba install -c conda-forge gcc=12.1.0 -y
+# mamba install -c conda-forge openmm -y
+# git clone https://github.com/ramanathanlab/deepdrivemd.git
+# cd deepdrivemd
+# make install
+
+# These instructions were made on 03/14/2024, if they fail to work in the future,
+# please open an issue on the deepdrivemd repository.
 
 # The simulation input directory. Should contain subfolders with PDB
 # files (and optional topology files)
